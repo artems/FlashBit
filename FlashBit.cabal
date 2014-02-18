@@ -1,0 +1,54 @@
+name:                FlashBit
+
+--                   +-+------- breaking API changes
+--                   | | +----- non-breaking API additions
+--                   | | | +--- code changes with no API change
+version:             0.1.0.0
+
+-- A short (one-line) description of the package.
+synopsis:           .
+
+-- A longer description of the package.
+description:        .
+
+author:             Artem Semenov
+maintainer:         tema.semenov@gmail.com
+license:            BSD3
+license-file:       LICENSE
+category:           Network
+build-type:         Simple
+cabal-version:      >= 1.10
+
+
+library
+  hs-source-dirs:   src
+
+  exposed-modules:
+    BCode
+
+  build-depends:
+    base == 4.*,
+    containers  == 0.5.*,
+    bytestring  == 0.10.*,
+    parsec == 3.1.*
+
+  default-language:    Haskell98
+
+
+test-suite flashbit-specs
+  type:             exitcode-stdio-1.0
+
+  main-is:          Main.hs
+
+  hs-source-dirs:   specs
+  ghc-options:      -Wall
+
+  build-depends:
+    FlashBit,
+    base        == 4.*,
+    hspec       == 1.8.*,
+    containers  == 0.5.*,
+    bytestring  == 0.10.*,
+    parsec
+
+
