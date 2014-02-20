@@ -24,13 +24,18 @@ library
   hs-source-dirs:   src
 
   exposed-modules:
-    BCode
+    BCode,
+    Protocol.Peer
+    Protocol.Types
+
 
   build-depends:
     base == 4.*,
     containers  == 0.5.*,
     bytestring  == 0.10.*,
-    parsec == 3.1.*
+    parsec == 3.1.*,
+    array == 0.4.*,
+    binary == 0.7.*
 
   default-language:    Haskell98
 
