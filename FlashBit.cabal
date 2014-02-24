@@ -25,12 +25,16 @@ library
 
   exposed-modules:
     BCode,
+    Process,
+    Process.Peer
     Protocol.Peer
     Protocol.Types
 
 
   build-depends:
     base == 4.*,
+    mtl == 2.1.*,
+    stm == 2.4.*,
     containers  == 0.5.*,
     bytestring  == 0.10.*,
     parsec == 3.1.*,
