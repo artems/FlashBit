@@ -1,5 +1,12 @@
 module Supervisor
     ( start
+    , RestartPolicy(..)
+    , RestartStrategy(..)
+    , ChildId
+    , ChildType(..)
+    , ChildSpec(..)
+    , SupervisorMessage(..)
+    , SupervisorChannel
     ) where
 
 
@@ -7,6 +14,8 @@ import qualified Data.Map as M
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.State hiding (state)
+
+import Data.Time.Clock
 
 import Server (Server(..), Reason(..), simpleServer)
 import qualified Server as Server
@@ -54,8 +63,12 @@ instance Show SupervisorMessage where
 data SupervisorState = SupervisorState
     { sChan :: SupervisorChannel
     , sStrategy :: RestartStrategy
+    , sMaxRestart :: MaxRestart
+    , sMaxTime :: MaxTime
+    , sRestartMark :: [UTCTime]
     , sChildrenSpec :: M.Map ChildId ChildSpec
     , sChildrenStop :: M.Map ChildId (TMVar ())
+    , sReason :: Maybe Reason
     }
 
 type Supervisor = StateT SupervisorState IO ()
@@ -67,13 +80,16 @@ supervisorServer = simpleServer
     , srvTerminate = onTerminate
     }
 
-runSupervisor state supervisor
-    = Right `liftM` execStateT supervisor state
+runSupervisor state supervisor = do
+    state' <- execStateT supervisor state
+    case (sReason state') of
+        Just reason -> return (Left reason)
+        Nothing     -> return (Right state')
 
 onInit state = runSupervisor state startup
 
 onMessage state Terminate
-    = return $ Left Shutdown
+    = runSupervisor state stop
 onMessage state (AddChild id spec)
     = runSupervisor state (addChild id spec)
 onMessage state (ChildDead id reason)
@@ -81,6 +97,20 @@ onMessage state (ChildDead id reason)
 
 onTerminate state reason
     = execStateT terminate state >> return reason
+
+
+start :: RestartStrategy -> MaxRestart -> MaxTime -> [(ChildId, ChildSpec)]
+      -> (Reason -> IO ())
+      -> IO (TMVar (), SupervisorChannel)
+start strategy maxRestart maxTime specs finally = do
+    chan <- newTChanIO
+    state <- mkSupervisorState chan strategy maxRestart maxTime specs
+    stopT <- Server.start state chan supervisorServer finally
+    return (stopT, chan)
+
+
+stop :: Supervisor
+stop = modify $ \state -> state { sReason = Just Shutdown }
 
 
 startup :: Supervisor
@@ -108,23 +138,17 @@ startChild id spec = do
     finally chan reason = atomically $ writeTChan chan (ChildDead id reason)
 
 
-start :: RestartStrategy -> [(ChildId, ChildSpec)]
-      -> IO (TMVar (), SupervisorChannel)
-start strategy specs = do
-    chan <- newTChanIO
-    state <- mkSupervisorState chan strategy specs
-    stopT <- Server.start state chan supervisorServer finally
-    return (stopT, chan)
-  where
-    finally reason = return ()
 
-
-mkSupervisorState chan strategy specs = do
+mkSupervisorState chan strategy maxRestart maxTime specs = do
     return SupervisorState
         { sChan = chan
         , sStrategy = strategy
+        , sMaxRestart = maxRestart
+        , sMaxTime = maxTime
+        , sRestartMark = []
         , sChildrenSpec = M.fromList specs
         , sChildrenStop = M.empty
+        , sReason = Nothing
         }
 
 
@@ -144,6 +168,26 @@ deleteChild id = do
 
 reanimateChild :: ChildId -> Reason -> Supervisor
 reanimateChild id reason = do
+    crashes <- gets sRestartMark
+    maxTime <- gets sMaxTime
+    maxRestart <- gets sMaxRestart
+    curtime <- liftIO getCurrentTime
+    let crashes' = take maxRestart $ curtime : crashes
+    modify $ \state -> state { sRestartMark = crashes' }
+    if checkRestart maxRestart maxTime crashes
+        then restartChild id reason
+        else stop
+
+
+checkRestart maxRestart maxTime crashes
+    | length crashes < maxRestart = False
+    | otherwise = let
+        hi = head crashes
+        lo = last crashes
+        in floor (diffUTCTime hi lo) > maxTime
+
+restartChild :: ChildId -> Reason -> Supervisor
+restartChild id reason = do
     strategy <- gets sStrategy
     children <- gets sChildrenSpec
     let spec = findSpec id children

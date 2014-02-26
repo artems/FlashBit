@@ -58,6 +58,7 @@ start state chan server finally = do
         reason <- unmask $ response stateT stopT chan server reply
             `catch` (\(e :: SomeException) -> return (Exception e))
         state' <- atomically $ readTVar stateT
+        print "end"
         srvTerminate server state' reason
 
     shutdown :: Either SomeException Reason -> IO ()
