@@ -26,7 +26,7 @@ pickName = do
 pickTime :: IO Int
 pickTime = do
     gen <- getStdGen
-    let (time, gen') = randomR(2000 * 1000, 5000 * 1000) gen
+    let (time, gen') = randomR(2000 * 100, 5000 * 100) gen
     setStdGen gen'
     return time
 
@@ -80,41 +80,61 @@ terminate (MyState { name = n, role = r }) Normal = do
 terminate (MyState { name = n, role = r }) Shutdown = do
     putStrLn $ "The manager is mad and fired the whole band! " ++
                n ++ " just got back to playing in the subway"
-    return Normal
+    return Shutdown
 
-terminate (MyState { name = n, role = r }) (UserReason "bad note") = do
+terminate (MyState { name = n, role = r }) reason@(UserReason "bad note") = do
     putStrLn $ n ++ " sucks! kicked that member out of the band! (" ++ r ++ ")"
-    return Normal
+    return reason
 
 terminate (MyState { name = n, role = r }) reason = do
     putStrLn $ n ++ " has been kicked out (" ++ r ++ ")"
-    return Normal
+    return reason
 
 
-startServer role skill = do
+startServer role skill finally = do
     name <- pickName
     time <- pickTime
     chan <- newTChanIO
     stop <- newEmptyTMVarIO
     let state = MyState name role skill
         server = musicanServer time
-    return $ Server.start state chan server
+    Server.start state chan server finally
 
 startSupervisor = do
     stop <- newEmptyTMVarIO
-    mServer <- startServer "bass" "bad"
-    let spec = ChildSpec
+    let spec1 = ChildSpec
             { csType = Worker
-            , csAction = mServer
+            , csAction = \f -> startServer "singer" "good" f
             , csRestart = Permanent
-            , csShutdown = 0
+            , csShutdown = 1000
             }
-        finally = \r -> atomically $ putTMVar stop r
-    Supervisor.start OneForOne 5 60 [("singer", spec)] finally
+        spec2 = ChildSpec
+            { csType = Worker
+            , csAction = \f -> startServer "bass" "good" f
+            , csRestart = Temporary
+            , csShutdown = 1000
+            }
+        spec3 = ChildSpec
+            { csType = Worker
+            , csAction = \f -> startServer "drum" "bad" f
+            , csRestart = Transient
+            , csShutdown = 1000
+            }
+        spec4 = ChildSpec
+            { csType = Worker
+            , csAction = \f -> startServer "keytar" "good" f
+            , csRestart = Transient
+            , csShutdown = 1000
+            }
+        specs = [("singer", spec1), ("bass", spec2), ("drum", spec3), ("keytar", spec4)]
+
+        finally reason = atomically $ putTMVar stop reason
+    Supervisor.start OneForAll 3 60 specs finally
+    return stop
 
 
 main = do
-    (stop, chan) <- startSupervisor
+    stop <- startSupervisor
     reason <- atomically $ takeTMVar stop
     print reason
     return ()

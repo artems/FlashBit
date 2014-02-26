@@ -58,7 +58,6 @@ start state chan server finally = do
         reason <- unmask $ response stateT stopT chan server reply
             `catch` (\(e :: SomeException) -> return (Exception e))
         state' <- atomically $ readTVar stateT
-        print "end"
         srvTerminate server state' reason
 
     shutdown :: Either SomeException Reason -> IO ()
@@ -70,7 +69,9 @@ response :: TVar s -> TMVar () -> TChan m -> Server s m -> Response s -> IO Reas
 response stateT stopT chan server reply
     = case reply of
         Left reason -> return reason
-        Right state -> loop stateT stopT chan server
+        Right state -> do
+            atomically $ writeTVar stateT state
+            loop stateT stopT chan server
 
 
 loop :: TVar s -> TMVar () -> TChan m -> Server s m -> IO Reason
@@ -80,16 +81,12 @@ loop stateT stopT chan server = do
         Just t  -> T.timeout t readChan
         Nothing -> Just `fmap` readChan
     reply <- mask_ $ do
-        reply <- onEvent state event
-        updateState reply
-        return reply
+        onEvent state event
     response stateT stopT chan server reply
   where
     readChan = atomically $
         (readTChan chan >>= return . Right) `orElse`
         (takeTMVar stopT >>= return . Left)
-    updateState (Right state) = atomically $ writeTVar stateT state
-    updateState _             = return ()
     onEvent state Nothing = srvOnTimeout server state
     onEvent state (Just (Left _)) = return (Left Shutdown)
     onEvent state (Just (Right message)) = srvOnMessage server state message

@@ -168,19 +168,21 @@ deleteChild id = do
 
 reanimateChild :: ChildId -> Reason -> Supervisor
 reanimateChild id reason = do
+    children <- gets sChildrenStop
     crashes <- gets sRestartMark
     maxTime <- gets sMaxTime
     maxRestart <- gets sMaxRestart
     curtime <- liftIO getCurrentTime
     let crashes' = take maxRestart $ curtime : crashes
     modify $ \state -> state { sRestartMark = crashes' }
-    if checkRestart maxRestart maxTime crashes
+    if checkRestart maxRestart maxTime crashes'
         then restartChild id reason
         else stop
 
 
 checkRestart maxRestart maxTime crashes
-    | length crashes < maxRestart = False
+    | length crashes == 0 = True
+    | maxRestart > length crashes = True
     | otherwise = let
         hi = head crashes
         lo = last crashes
