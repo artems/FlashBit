@@ -5,17 +5,18 @@ module Server
     , Reason(..)
     , Timeout
     , Response
+    , dummyServer
     , start
-    , simpleServer
     ) where
 
 
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
-import Control.Monad (when)
 import qualified System.Timeout as T
 
+
+type Timeout = Int
 
 data Reason
     = Normal
@@ -32,9 +33,6 @@ instance Eq Reason where
     UserReason a == UserReason b = a == b
     _ == _ = False
 
-
-type Timeout = Int
-
 type Response s = Either Reason s
 
 data Server s m = Server
@@ -42,62 +40,71 @@ data Server s m = Server
     , srvInit      :: s -> IO (Response s)
     , srvOnTimeout :: s -> IO (Response s)
     , srvOnMessage :: s -> m -> IO (Response s)
-    , srvTerminate :: s -> Reason -> IO Reason
+    , srvTerminate :: s -> Reason -> IO ()
     }
 
-start :: s -> TChan m -> Server s m -> (Reason -> IO ()) -> IO (TMVar ())
-start state chan server finally = do
+start :: s -> TChan m -> Server s m -> (Reason -> IO ()) -> IO (TMVar Reason)
+start state chan server userTerminate = do
     stopT <- newEmptyTMVarIO
-    _ <- forkFinally (startup stopT) shutdown
+    _     <- forkFinally (startup stopT) shutdown
     return stopT
   where
-    startup :: TMVar () -> IO Reason
-    startup stopT = mask $ \unmask -> do
-        reply <- srvInit server state
+    startup :: TMVar Reason -> IO Reason
+    startup stopT = do
         stateT <- newTVarIO state
-        reason <- unmask $ response stateT stopT chan server reply
-            `catch` (\(e :: SomeException) -> return (Exception e))
+        reply  <- srvInit server state
+        reason <- response stateT stopT chan server reply
+                    `catch` (\(e :: SomeException) -> return (Exception e))
         state' <- atomically $ readTVar stateT
         srvTerminate server state' reason
+        return reason
 
     shutdown :: Either SomeException Reason -> IO ()
-    shutdown (Left e) = finally (Exception e)
-    shutdown (Right reason) = finally reason
+    shutdown (Left e) = userTerminate (Exception e)
+    shutdown (Right reason) = userTerminate reason
 
 
-response :: TVar s -> TMVar () -> TChan m -> Server s m -> Response s -> IO Reason
+response :: TVar s -> TMVar Reason -> TChan m -> Server s m -> Response s -> IO Reason
 response stateT stopT chan server reply
     = case reply of
-        Left reason -> return reason
+        Left reason ->
+            return reason
         Right state -> do
-            atomically $ writeTVar stateT state
+            updateState state
             loop stateT stopT chan server
+  where
+    updateState state = atomically $ writeTVar stateT state
 
 
-loop :: TVar s -> TMVar () -> TChan m -> Server s m -> IO Reason
+loop :: TVar s -> TMVar Reason -> TChan m -> Server s m -> IO Reason
 loop stateT stopT chan server = do
     state <- atomically $ readTVar stateT
     event <- case srvTimeout server of
-        Just t  -> T.timeout t readChan
-        Nothing -> Just `fmap` readChan
-    reply <- mask_ $ do
-        onEvent state event
+                Just t  -> T.timeout t waitForEvent
+                Nothing -> Just `fmap` waitForEvent
+    reply <- onEvent state server event
     response stateT stopT chan server reply
   where
-    readChan = atomically $
+    waitForEvent = atomically $
         (readTChan chan >>= return . Right) `orElse`
         (takeTMVar stopT >>= return . Left)
-    onEvent state Nothing = srvOnTimeout server state
-    onEvent state (Just (Left _)) = return (Left Shutdown)
-    onEvent state (Just (Right message)) = srvOnMessage server state message
 
 
-simpleServer = Server
-    { srvTimeout = Nothing
-    , srvInit = (\s -> return (Right s))
-    , srvOnTimeout = (\s -> return (Left Timeout))
-    , srvOnMessage = (\s m -> return (Right s))
-    , srvTerminate = (\s r -> return r)
+onEvent :: s -> Server s m -> Maybe (Either Reason m) -> IO (Response s)
+onEvent state server event
+    = case event of
+        Nothing -> srvOnTimeout server state
+        Just (Left reason) -> return $ Left reason
+        Just (Right message) -> srvOnMessage server state message
+
+
+dummyServer :: Server s m
+dummyServer = Server
+    { srvInit = \state -> return $ Right state
+    , srvTimeout  = Nothing
+    , srvOnTimeout = \_state -> return $ Left Timeout
+    , srvOnMessage = \state _message -> return $ Right state
+    , srvTerminate = \_state _reason -> return ()
     }
 
 

@@ -40,7 +40,7 @@ data MyState = MyState
 data MyMessage = MyTerminate
 
 
-musicanServer time = simpleServer
+musicanServer time = dummyServer
     { srvTimeout   = Just time
     , srvInit      = onInit
     , srvOnTimeout = timeout
@@ -75,20 +75,16 @@ timeout state@(MyState { name = n, skill = "bad" }) = do
 
 terminate (MyState { name = n, role = r }) Normal = do
     putStrLn $ n ++ " left the room (" ++ r ++")"
-    return Normal
 
 terminate (MyState { name = n, role = r }) Shutdown = do
     putStrLn $ "The manager is mad and fired the whole band! " ++
                n ++ " just got back to playing in the subway"
-    return Shutdown
 
-terminate (MyState { name = n, role = r }) reason@(UserReason "bad note") = do
+terminate (MyState { name = n, role = r }) (UserReason "bad note") = do
     putStrLn $ n ++ " sucks! kicked that member out of the band! (" ++ r ++ ")"
-    return reason
 
 terminate (MyState { name = n, role = r }) reason = do
     putStrLn $ n ++ " has been kicked out (" ++ r ++ ")"
-    return reason
 
 
 startServer role skill finally = do

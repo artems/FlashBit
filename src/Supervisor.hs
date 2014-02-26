@@ -17,7 +17,7 @@ import Control.Monad.State hiding (state)
 
 import Data.Time.Clock
 
-import Server (Server(..), Reason(..), simpleServer)
+import Server (Server(..), Reason(..), dummyServer)
 import qualified Server as Server
 
 
@@ -42,7 +42,7 @@ data ChildType = Worker | Supervisor
 
 data ChildSpec = ChildSpec
     { csType :: ChildType
-    , csAction :: (Reason -> IO ()) -> IO (TMVar ())
+    , csAction :: (Reason -> IO ()) -> IO (TMVar Reason)
     , csRestart :: RestartPolicy
     , csShutdown :: ShutdownTimeout
     }
@@ -67,14 +67,14 @@ data SupervisorState = SupervisorState
     , sMaxTime :: MaxTime
     , sRestartMark :: [UTCTime]
     , sChildrenSpec :: M.Map ChildId ChildSpec
-    , sChildrenStop :: M.Map ChildId (TMVar ())
+    , sChildrenStop :: M.Map ChildId (TMVar Reason)
     , sReason :: Maybe Reason
     }
 
 type Supervisor = StateT SupervisorState IO ()
 
 
-supervisorServer = simpleServer
+supervisorServer = dummyServer
     { srvInit = onInit
     , srvOnMessage = onMessage
     , srvTerminate = onTerminate
@@ -96,12 +96,12 @@ onMessage state (ChildDead id reason)
     = runSupervisor state (reanimateChild id reason)
 
 onTerminate state reason
-    = execStateT terminate state >> return reason
+    = execStateT terminate state >> return ()
 
 
 start :: RestartStrategy -> MaxRestart -> MaxTime -> [(ChildId, ChildSpec)]
       -> (Reason -> IO ())
-      -> IO (TMVar (), SupervisorChannel)
+      -> IO (TMVar Reason, SupervisorChannel)
 start strategy maxRestart maxTime specs finally = do
     chan <- newTChanIO
     state <- mkSupervisorState chan strategy maxRestart maxTime specs
@@ -122,7 +122,7 @@ startup = do
 terminate :: Supervisor
 terminate = do
     children <- gets sChildrenStop
-    forM_ (M.elems children) $ \stopT -> liftIO . atomically $ putTMVar stopT ()
+    forM_ (M.elems children) $ \stopT -> liftIO . atomically $ putTMVar stopT Shutdown
     -- TODO shutdown timeout
     -- TODO wait for children
 
@@ -167,22 +167,24 @@ deleteChild id = do
         }
 
 reanimateChild :: ChildId -> Reason -> Supervisor
+reanimateChild _ Shutdown = return ()
+
 reanimateChild id reason = do
-    children <- gets sChildrenStop
     crashes <- gets sRestartMark
     maxTime <- gets sMaxTime
     maxRestart <- gets sMaxRestart
     curtime <- liftIO getCurrentTime
-    let crashes' = take maxRestart $ curtime : crashes
+    let crashes' = take (maxRestart + 1) (curtime : crashes)
     modify $ \state -> state { sRestartMark = crashes' }
     if checkRestart maxRestart maxTime crashes'
         then restartChild id reason
         else stop
 
 
+checkRestart :: MaxRestart -> MaxTime -> [UTCTime] -> Bool
 checkRestart maxRestart maxTime crashes
     | length crashes == 0 = True
-    | maxRestart > length crashes = True
+    | maxRestart >= length crashes = True
     | otherwise = let
         hi = head crashes
         lo = last crashes
@@ -193,7 +195,7 @@ restartChild id reason = do
     strategy <- gets sStrategy
     children <- gets sChildrenSpec
     let spec = findSpec id children
-    if needRestart spec reason
+    if needRestart spec
         then restart strategy spec
         else deleteChild id
 
@@ -208,7 +210,7 @@ restartChild id reason = do
             OneForOne -> startChild id spec
             OneForAll -> terminate >> startup
 
-    needRestart spec reason
+    needRestart spec
         = case csRestart spec of
             Permanent -> True
             Temporary -> False
