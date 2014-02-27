@@ -110,7 +110,7 @@ getMessage' length = do
   where
     check :: (Word32 -> Bool) -> Get ()
     check test = do
-        when (test length) (fail "wrong message size")
+        unless (test length) (fail "wrong message size")
         return ()
 
 

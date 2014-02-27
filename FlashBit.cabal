@@ -26,7 +26,11 @@ library
   exposed-modules:
     BCode,
     Process,
-    Process.Peer
+    -- Process.Peer
+    Process.Peer.Sender
+    Process.Peer.Handler
+    Process.Peer.Receiver
+    Process.Peer.Supervisor
     Protocol.Peer
     Protocol.Types
 
@@ -39,7 +43,9 @@ library
     bytestring  == 0.10.*,
     parsec == 3.1.*,
     array == 0.4.*,
-    binary == 0.7.*
+    binary == 0.7.*,
+    network == 2.4.*,
+    time == 1.4.*
 
   default-language:    Haskell98
 

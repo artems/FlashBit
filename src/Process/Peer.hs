@@ -47,7 +47,7 @@ data PeerServerMessage
     | Tick
 
 peerServer :: Server.Server PeerServerState PeerServerMessage
-peerServer = Server.simpleServer
+peerServer = Server.dummyServer
     { Server.srvOnMessage = onMessage
     , Server.srvTerminate = terminate
     }

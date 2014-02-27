@@ -1,12 +1,13 @@
 module Supervisor
-    ( start
-    , RestartPolicy(..)
+    ( RestartPolicy(..)
     , RestartStrategy(..)
     , ChildId
     , ChildType(..)
     , ChildSpec(..)
     , SupervisorMessage(..)
     , SupervisorChannel
+    , start
+    , dummyWorker
     ) where
 
 
@@ -89,7 +90,7 @@ runSupervisor state supervisor = do
 onInit state = runSupervisor state startup
 
 onMessage state Terminate
-    = runSupervisor state stop
+    = runSupervisor state (stop Shutdown)
 onMessage state (AddChild id spec)
     = runSupervisor state (addChild id spec)
 onMessage state (ChildDead id reason)
@@ -109,8 +110,8 @@ start strategy maxRestart maxTime specs finally = do
     return (stopT, chan)
 
 
-stop :: Supervisor
-stop = modify $ \state -> state { sReason = Just Shutdown }
+stop :: Reason -> Supervisor
+stop reason = modify $ \state -> state { sReason = Just reason }
 
 
 startup :: Supervisor
@@ -178,7 +179,7 @@ reanimateChild id reason = do
     modify $ \state -> state { sRestartMark = crashes' }
     if checkRestart maxRestart maxTime crashes'
         then restartChild id reason
-        else stop
+        else stop reason
 
 
 checkRestart :: MaxRestart -> MaxTime -> [UTCTime] -> Bool
@@ -216,4 +217,11 @@ restartChild id reason = do
             Temporary -> False
             Transient -> reason /= Normal
 
+
+dummyWorker action = ChildSpec
+    { csType = Worker
+    , csAction = action
+    , csRestart = Permanent
+    , csShutdown = 1000
+    }
 

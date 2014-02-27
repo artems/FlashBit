@@ -125,7 +125,7 @@ startSupervisor = do
         specs = [("singer", spec1), ("bass", spec2), ("drum", spec3), ("keytar", spec4)]
 
         finally reason = atomically $ putTMVar stop reason
-    Supervisor.start OneForAll 3 60 specs finally
+    Supervisor.start OneForAll 1 0 specs finally
     return stop
 
 
