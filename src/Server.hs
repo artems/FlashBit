@@ -1,11 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Server
-    ( Server(..)
-    , Reason(..)
+    ( Reason(..)
     , Timeout
-    , dummyServer
-    , start
+    , mkServer
+    , runServer
     ) where
 
 
@@ -13,6 +12,8 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import qualified System.Timeout as T
+
+import Process
 
 
 type Timeout = Int
@@ -34,89 +35,72 @@ instance Eq Reason where
     _ == _ = False
 
 
-data Server s m = Server
-    { srvInit      :: IO (Either Reason s)
-    , srvChan      :: TChan m
-    , srvTimeout   :: Maybe Timeout
-    , srvOnTimeout :: s -> IO (Either Reason s)
-    , srvTerminate :: s -> Reason -> IO ()
-    , srvOnMessage :: s -> m -> IO (Either Reason s)
+data Server c s m = Server
+    { srvWait       :: c -> s -> STM m
+    , srvTimeout    :: Maybe Timeout
+    , srvOnTimeout  :: Process c s (Maybe Reason)
+    , srvOnMessage  :: m -> Process c s (Maybe Reason)
+    , srvTerminate  :: Reason -> Process c s ()
     }
 
 
-start :: Server s m -> (Reason -> IO ()) -> IO (TMVar Reason)
-start server userTerminate = do
-    stopT <- newEmptyTMVarIO
-    _     <- forkFinally (startup server stopT) (shutdown userTerminate)
-    return stopT
+mkServer :: (c -> s -> STM m)
+         -> Maybe Timeout
+         -> Process c s (Maybe Reason)
+         -> (m -> Process c s (Maybe Reason))
+         -> (Reason -> Process c s ())
+         -> Server c s m
+mkServer wait timeout onTimeout onMessage terminate
+    = Server
+    { srvWait = wait
+    , srvTimeout = timeout
+    , srvOnTimeout = onTimeout
+    , srvOnMessage = onMessage
+    , srvTerminate = terminate
+    }
 
 
-startup :: Server s m -> TMVar Reason -> IO Reason
-startup server stopT = do
-    reply <- srvInit server
-    startup' server stopT reply
+runServer :: c -> s -> Process c s (Maybe Reason) -> Server c s m -> IO Reason
+runServer conf state init server = do
+    (reason, state') <- runProcess conf state init
+    startup conf state' server reason
 
 
-startup' :: Server s m -> TMVar Reason -> Either Reason s -> IO Reason
-startup' _server _stopT (Left reason) =
+startup :: c -> s -> Server c s m -> Maybe Reason -> IO Reason
+startup _conf _state _server (Just reason) =
     return reason
 
-startup' server stopT (Right state) = do
+startup conf state server Nothing = do
     stateT <- newTVarIO state
-    reason <- loop server stateT stopT
+    reason <- loop conf stateT server
         `catch` (\(e :: SomeException) -> return (Exception e))
     state' <- atomically $ readTVar stateT
-    srvTerminate server state' reason
+    runProcess conf state' $ srvTerminate server reason
     return reason
 
 
-shutdown :: (Reason -> IO ()) -> Either SomeException Reason -> IO ()
-shutdown userTerminate (Left e)
-    = userTerminate $ Exception e
-shutdown userTerminate (Right reason)
-    = userTerminate reason
-
-
-loop :: Server s m -> TVar s -> TMVar Reason -> IO Reason
-loop server stateT stopT = do
+loop :: c -> TVar s -> Server c s m -> IO Reason
+loop conf stateT server = do
     state <- atomically $ readTVar stateT
     event <- case srvTimeout server of
-        Just x  -> T.timeout x waitForEvent
-        Nothing -> Just `fmap` waitForEvent
-    reply <- onEvent server state event
-    response server stateT stopT reply
+        Just x  -> T.timeout x (waitForEvent conf state)
+        Nothing -> Just `fmap` (waitForEvent conf state)
+    onEvent conf stateT server event
   where
-    chan = srvChan server
-    waitForEvent = atomically $
-        (readTChan chan >>= return . Right) `orElse`
-        (takeTMVar stopT >>= return . Left)
+    waitForEvent conf state = atomically $ srvWait server conf state
 
 
-onEvent :: Server s m -> s -> Maybe (Either Reason m) -> IO (Either Reason s)
-onEvent server state event
-    = case event of
-        Nothing -> srvOnTimeout server state
-        Just (Left reason) -> return $ Left reason
-        Just (Right message) -> srvOnMessage server state message
+onEvent :: c -> TVar s -> Server c s m -> Maybe m -> IO Reason
+onEvent conf stateT server event = do
+    state <- atomically $ readTVar stateT
+    (reason, state') <- runProcess conf state (proc event)
+    atomically $ writeTVar stateT state'
+    response reason
+  where
+    proc Nothing = srvOnTimeout server
+    proc (Just message) = srvOnMessage server message
 
-
-response :: Server s m -> TVar s -> TMVar Reason -> Either Reason s -> IO Reason
-response server stateT stopT reply = case reply of
-    Left reason ->
-        return reason
-    Right state -> do
-        atomically $ writeTVar stateT state
-        loop server stateT stopT
-
-
-dummyServer :: Server s m
-dummyServer = Server
-    { srvInit = undefined
-    , srvChan = undefined
-    , srvTimeout  = Nothing
-    , srvOnTimeout = \_state -> return $ Left Timeout
-    , srvTerminate = \_state _reason -> return ()
-    , srvOnMessage = undefined
-    }
+    response Nothing = loop conf stateT server
+    response (Just reason) = return reason
 
 
