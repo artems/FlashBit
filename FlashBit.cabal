@@ -24,15 +24,17 @@ library
   hs-source-dirs:   src
 
   exposed-modules:
-    BCode,
-    Process,
+    BCode
+    Process
     -- Process.Peer
-    Process.Peer.Sender
-    Process.Peer.Handler
-    Process.Peer.Receiver
-    Process.Peer.Supervisor
+    -- Process.Peer.Sender
+    -- Process.Peer.Handler
+    -- Process.Peer.Receiver
+    -- Process.Peer.Supervisor
     Protocol.Peer
     Protocol.Types
+    Server
+    Supervisor
 
 
   build-depends:
@@ -47,7 +49,7 @@ library
     network == 2.4.*,
     time == 1.4.*
 
-  default-language:    Haskell98
+  default-language:    Haskell2010
 
 
 test-suite flashbit-specs
@@ -65,5 +67,7 @@ test-suite flashbit-specs
     containers  == 0.5.*,
     bytestring  == 0.10.*,
     parsec
+
+  default-language:    Haskell2010
 
 
