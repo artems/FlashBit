@@ -5,6 +5,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad (forM, forever)
 import Control.Monad.State
+import Control.Monad.Reader
 import System.Random (randomRIO)
 
 import Server
@@ -13,7 +14,10 @@ import Process
 
 data MyMessage = Add | Reset | Print | Wait (TMVar ())
 
-wait conf state = readTChan conf
+
+wait = do
+    chan <- ask
+    liftIO . atomically $ readTChan chan
 
 onMessage m = do
     case m of
@@ -32,7 +36,7 @@ terminate reason = do
     count <- get
     liftIO . putStrLn $ "count " ++ show count ++ "; reason " ++ show reason
 
-server = mkServer wait Nothing (return (Just Timeout)) onMessage terminate
+server = mkServer wait onMessage terminate
 
 main = do
     chan <- newTChanIO
