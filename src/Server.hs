@@ -62,19 +62,28 @@ mkServerWithTimeout
     :: Process c s m
     -> (m -> Process c s (Maybe Reason))
     -> (Reason -> Process c s ())
-    -> Maybe Timeout
+    -> Timeout
     -> Process c s (Maybe Reason)
     -> Server c s m
 mkServerWithTimeout wait onMessage terminate timeout onTimeout =
     let server = mkServer wait onMessage terminate
     in  server
-        { srvTimeout = timeout
+        { srvTimeout = Just timeout
         , srvOnTimeout = onTimeout
         }
 
 
-runServer :: c -> s -> Server c s m -> IO Reason
-runServer conf state server = do
+runServer :: c -> s -> Process c s (Maybe Reason) -> Server c s m -> IO Reason
+runServer conf state init server = do
+    (reason, state') <- runProcess conf state init
+    startup conf state' server reason
+
+
+startup :: c -> s -> Server c s m -> Maybe Reason -> IO Reason
+startup _conf _state _server (Just reason) =
+    return reason
+
+startup conf state server Nothing = do
     stateT <- newTVarIO state
     reason <- loop conf state server stateT
         `catch` (\(e :: SomeException) -> return (Exception e))

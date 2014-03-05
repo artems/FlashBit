@@ -34,7 +34,7 @@ library
     Protocol.Peer
     Protocol.Types
     Server
-    Supervisor2
+    Supervisor
 
 
   build-depends:
