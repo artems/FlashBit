@@ -73,17 +73,8 @@ mkServerWithTimeout wait onMessage terminate timeout onTimeout =
         }
 
 
-runServer :: c -> s -> Process c s (Maybe Reason) -> Server c s m -> IO Reason
-runServer conf state init server = do
-    (reason, state') <- runProcess conf state init
-    startup conf state' server reason
-
-
-startup :: c -> s -> Server c s m -> Maybe Reason -> IO Reason
-startup _conf _state _server (Just reason) =
-    return reason
-
-startup conf state server Nothing = do
+runServer :: c -> s -> Server c s m -> IO Reason
+runServer conf state server = do
     stateT <- newTVarIO state
     reason <- loop conf state server stateT
         `catch` (\(e :: SomeException) -> return (Exception e))

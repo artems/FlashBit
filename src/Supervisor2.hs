@@ -84,6 +84,36 @@ mkSupervisor strategy maxRestart maxRestartTime specs = do
         }
 
 
+start :: RestartStrategy -> Int -> Int -> [(ChildId, ChildSpec)]
+      -> IO Reason
+start strategy maxRestart maxRestartTime specs = do
+    state <- mkSupervisor strategy maxRestart maxRestartTime specs
+    runServer () state server
+  where
+    server = mkServer wait onMessage terminate
+
+
+wait :: Process () SupervisorState (Either WorkerMessage SupervisorMessage)
+wait = do
+    workerChan <- gets sWorkerChan
+    commandChan <- gets sCommandChan
+    liftIO . atomically $
+        (readTChan workerChan >>= return . Left) `orElse`
+        (readTChan commandChan >>= return . Right)
+
+
+onMessage :: Either WorkerMessage SupervisorMessage
+          -> Process () SupervisorState (Maybe Reason)
+onMessage message = do
+    case message of
+        Left (Dead cid reason) ->
+            restartChild cid reason
+        Right (Add cid spec) ->
+            addChild cid spec >> return Nothing
+        Right Terminate ->
+            return $ Just Shutdown
+
+
 startup :: Process () SupervisorState (Maybe Reason)
 startup = do
     specs <- gets sChildSpec
@@ -142,8 +172,8 @@ restartChild' cid reason = do
     children <- gets sChildSpec
     case M.lookup cid children of
         Just spec ->
-            if applyRestartPolicy spec
-                then restartChild'' cid spec
+            if applyRestartPolicy (csRestart spec) reason
+                then restartChild'' cid spec reason
                 else modify $ \s -> s { sChildThread = M.delete cid $ sChildThread s }
         _ -> return ()
     return Nothing
@@ -158,6 +188,7 @@ restartChild'' cid spec reason = do
             modify $ \s -> s { sWorkerChan = chan }
             terminate reason
             startup
+            return ()
 
 
 needRestart :: Int -> Int -> [UTCTime] -> Bool
@@ -176,6 +207,14 @@ applyRestartPolicy policy reason
         Permanent -> True
         Temporary -> False
         Transient -> reason /= Normal
+
+
+------
+
+addChild :: ChildId -> ChildSpec -> Process () SupervisorState ()
+addChild cid spec = do
+    modify $ \s -> s { sChildSpec = M.insert cid spec (sChildSpec s) }
+    startChild cid spec
 
 
 
