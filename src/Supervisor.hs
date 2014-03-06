@@ -51,7 +51,7 @@ data WorkerMessage
     = Dead ChildId Reason
 
 data SupervisorMessage
-    = Add ChildId ChildSpec
+    = Add ChildId (IO ChildSpec)
     | Stop ChildId
     | Delete ChildId
     | Restart ChildId
@@ -64,12 +64,12 @@ data SupervisorState = SupervisorState
     , sMaxRestartTime :: Int
     , sCrashTime :: [UTCTime]
     , sCommandChan :: TChan SupervisorMessage
-    , sChildSpec :: M.Map ChildId ChildSpec
-    , sChildThread :: M.Map ChildId (ThreadId, TMVar Reason)
+    , sChildSpec :: M.Map ChildId (IO ChildSpec)
+    , sChildThread :: M.Map ChildId (ThreadId, TMVar Reason, ChildSpec)
     }
 
 
-mkSupervisor :: RestartStrategy -> Int -> Int -> [(ChildId, ChildSpec)]
+mkSupervisor :: RestartStrategy -> Int -> Int -> [(ChildId, IO ChildSpec)]
              -> IO SupervisorState
 mkSupervisor strategy maxRestart maxRestartTime specs = do
     commandChan <- newTChanIO
@@ -84,14 +84,13 @@ mkSupervisor strategy maxRestart maxRestartTime specs = do
         }
 
 
-runSupervisor :: RestartStrategy -> Int -> Int -> IO [(ChildId, ChildSpec)]
+runSupervisor :: RestartStrategy -> Int -> Int -> [(ChildId, IO ChildSpec)]
       -> IO Reason
 runSupervisor strategy maxRestart maxRestartTime specs = do
-    specs' <- specs
-    state <- mkSupervisor strategy maxRestart maxRestartTime specs'
-    runServer () state init server
+    state <- mkSupervisor strategy maxRestart maxRestartTime specs
+    runServer () state sinit server
   where
-    init = startup >> return Nothing
+    sinit = startup >> return Nothing
     server = mkServer wait onMessage terminate
 
 
@@ -103,7 +102,7 @@ wait = do
         waitMessage = foldl myfold command (M.assocs threads)
     liftIO . atomically $ waitMessage
   where
-    myfold stm (cid, (_, stop)) = stm `orElse`
+    myfold stm (cid, (_, stop, _)) = stm `orElse`
         (takeTMVar stop >>= return . Left . Dead cid)
 
 
@@ -121,24 +120,22 @@ onMessage message = do
 
 startup :: Process () SupervisorState ()
 startup = do
-    liftIO . putStrLn $ "startup"
     specs <- gets sChildSpec
     forM_ (M.assocs specs) $ \(id, spec) -> startChild id spec
-    liftIO . putStrLn $ "end"
 
 
 terminate :: Reason -> Process () SupervisorState ()
 terminate _reason = do
-    liftIO . putStrLn $ "terminate"
     threads <- gets sChildThread
     forM_ (M.keys threads) shutdownChild
 
 
-startChild :: ChildId -> ChildSpec -> Process () SupervisorState ()
-startChild cid spec = do
+startChild :: ChildId -> IO ChildSpec -> Process () SupervisorState ()
+startChild cid spec' = do
+    spec <- liftIO $ spec'
     stop <- liftIO $ newEmptyTMVarIO
     thId <- liftIO $ forkFinally (csAction spec) (shutdown stop)
-    modify $ \s -> s { sChildThread = M.insert cid (thId, stop) $ sChildThread s }
+    modify $ \s -> s { sChildThread = M.insert cid (thId, stop, spec) $ sChildThread s }
   where
     shutdown stop (Left e) = shutdown stop $ Right (Exception e)
     shutdown stop (Right reason) = atomically $ putTMVar stop reason
@@ -148,16 +145,15 @@ shutdownChild :: ChildId -> Process () SupervisorState ()
 shutdownChild cid = do
     specs <- gets sChildSpec
     threads <- gets sChildThread
-    let spec = M.lookup cid specs
-        thread = M.lookup cid threads
-    shutdownChild' spec thread
+    let thread = M.lookup cid threads
+    shutdownChild' thread
   where
-    shutdownChild' (Just spec) (Just (thread, stop)) = do
+    shutdownChild' (Just (thread, stop, spec)) = do
         timeouted <- liftIO $ T.timeout (csShutdownTimeout spec) (shutdownAttempt spec stop)
         when (isNothing timeouted) $
             liftIO $ killThread thread
         modify $ \s -> s { sChildThread = M.delete cid $ sChildThread s }
-    shutdownChild' _ _ = return ()
+    shutdownChild' _ = return ()
 
     shutdownAttempt spec stop = do
         liftIO $ csShutdown spec
@@ -179,12 +175,15 @@ restartChild cid reason = do
 
 restartChild' :: ChildId -> Reason -> Process () SupervisorState (Maybe Reason)
 restartChild' cid reason = do
-    children <- gets sChildSpec
-    case M.lookup cid children of
-        Just spec -> do
-            if applyRestartPolicy (csRestart spec) reason
-                then restartChild'' cid spec reason
-                else modify $ \s -> s { sChildThread = M.delete cid $ sChildThread s }
+    specs <- gets sChildSpec
+    workers <- gets sChildThread
+    let spec = M.lookup cid specs
+        worker = M.lookup cid workers
+    case (spec, worker) of
+        (Just spec1, Just (_, _, spec2)) -> do
+            modify $ \s -> s { sChildThread = M.delete cid $ sChildThread s }
+            when (applyRestartPolicy (csRestart spec2) reason) $
+                restartChild'' cid spec1 reason
         _ -> return ()
     return Nothing
 
@@ -216,7 +215,7 @@ applyRestartPolicy policy reason
 
 ------
 
-addChild :: ChildId -> ChildSpec -> Process () SupervisorState ()
+addChild :: ChildId -> IO ChildSpec -> Process () SupervisorState ()
 addChild cid spec = do
     modify $ \s -> s { sChildSpec = M.insert cid spec (sChildSpec s) }
     startChild cid spec

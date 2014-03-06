@@ -109,22 +109,19 @@ musicanWorker role skill = do
         { csType = Worker
         , csAction = runMusican role skill chan
         , csRestart = Permanent
-        , csShutdown = do
-            putStrLn "user shutdown"
-            atomically $ writeTChan chan MyTerminate
+        , csShutdown = atomically $ writeTChan chan MyTerminate
         , csShutdownTimeout = 1000
         }
 
 startSupervisor = do
     stop <- newEmptyTMVarIO
-    let specs = do
-        spec1 <- musicanWorker "singer" "good"
-        spec2 <- musicanWorker "bass" "good"
-        spec3 <- musicanWorker "drum" "bad"
-        spec4 <- musicanWorker "keytar" "good"
-        -- return $ [("singer", spec1), ("bass", spec2), ("drum", spec3), ("keytar", spec4)]
-        return $ [("singer", spec1), ("drum", spec3)]
-    runSupervisor OneForAll 3 60 specs
+    let spec1 = musicanWorker "singer" "good"
+        spec2 = musicanWorker "bass" "good"
+        spec3 = musicanWorker "drum" "bad"
+        spec4 = musicanWorker "keytar" "good"
+        -- specs = [("singer", spec1), ("drum", spec3)]
+        specs = [("singer", spec1), ("bass", spec2), ("drum", spec3), ("keytar", spec4)]
+    runSupervisor OneForAll (-1) 60 specs
 
 
 main = startSupervisor
