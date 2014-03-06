@@ -6,13 +6,14 @@ module Protocol.Peer
     , decodeHandshake
     , encodeHandshake
     , buildBitField
+    , handshakeSize
     ) where
 
 
 import Control.Applicative ((*>), (<$>), (<*>))
 import Control.Monad (when, unless)
 
-import Data.Binary (Binary, put, get, encode, decode)
+import Data.Binary (Binary, put, get, encode)
 import Data.Binary.Get (Get)
 import qualified Data.Binary.Get as Get
 import Data.Binary.Put (Put)
@@ -194,9 +195,9 @@ putHandshake (Handshake peerId infoHash capabilities) = do
 
 incDecoder :: Get a -> IO ByteString -> Maybe ByteString -> String
            -> IO (ByteString, a)
-incDecoder parser drain bs errPrefix = do
+incDecoder parser drain mbs errPrefix = do
     let decoder = Get.runGetIncremental parser
-    case bs of
+    case mbs of
         Just bs -> loop (decoder `Get.pushChunk` bs)
         Nothing -> loop decoder
   where

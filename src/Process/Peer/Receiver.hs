@@ -4,7 +4,6 @@ module Process.Peer.Receiver
     ) where
 
 
-import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.Reader (liftIO, asks)
 
@@ -15,7 +14,6 @@ import Network.Socket (Socket)
 import qualified Network.Socket.ByteString as SB
 
 
-import Server
 import Process
 import Supervisor
 import Protocol.Peer

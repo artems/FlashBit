@@ -3,13 +3,9 @@ module Process.Peer.Handler
     , specHandler
     ) where
 
-import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.State
-import Control.Monad.Reader (liftIO, asks)
-
-import Network.Socket (Socket)
-
+import Control.Monad.Reader (asks)
 
 import Server
 import Process
