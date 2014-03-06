@@ -30,7 +30,6 @@ onMessage m = do
             liftIO . putStrLn $ "count " ++ show count
         Wait v ->
             liftIO . atomically $ putTMVar v ()
-    return Nothing
 
 terminate reason = do
     count <- get
@@ -41,7 +40,7 @@ server = mkServer wait onMessage terminate
 main = do
     chan <- newTChanIO
     stop <- newEmptyTMVarIO
-    let sinit = return Nothing
+    let sinit = return ()
     thId <- forkFinally
         (runServer chan 0 sinit server)
         (\reason -> atomically $ putTMVar stop reason)

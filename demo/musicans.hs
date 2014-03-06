@@ -51,12 +51,11 @@ runMusican role skill chan = do
         = mkServerWithTimeout wait onMessage terminate time onTimeout
 
 
-onInit :: Process () MyState (Maybe Reason)
+onInit :: Process () MyState ()
 onInit = do
     n <- gets name
     r <- gets role
     liftIO . putStrLn $ "Musician " ++ n ++ ", playing the " ++ r ++ " entered the room"
-    return Nothing
 
 
 wait :: Process () MyState MyMessage
@@ -65,11 +64,11 @@ wait = do
     liftIO . atomically $ readTChan c
 
 
-onMessage :: MyMessage -> Process () MyState (Maybe Reason)
-onMessage MyTerminate = return $ Just Shutdown
+onMessage :: MyMessage -> Process () MyState ()
+onMessage MyTerminate = stopProcess Shutdown
 
 
-onTimeout :: Process () MyState (Maybe Reason)
+onTimeout :: Process () MyState ()
 onTimeout = do
     n <- gets name
     s <- gets skill
@@ -77,16 +76,14 @@ onTimeout = do
     if s == "good"
         then do
             liftIO $ putStrLn $ n ++ " produced sound!"
-            return Nothing
         else do
             dice <- liftIO $ randomRIO ((1, 5) :: (Int, Int))
             case dice of
                 1 -> do
                     liftIO $ putStrLn $ n ++ " played a false note. Uh oh"
-                    return $ Just $ UserReason "bad note"
+                    stopProcess $ UserReason "bad note"
                 _ -> do
                     liftIO $ putStrLn $ n ++ " produced sound!"
-                    return Nothing
 
 
 terminate :: Reason -> Process () MyState ()

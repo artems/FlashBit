@@ -88,9 +88,8 @@ runSupervisor :: RestartStrategy -> Int -> Int -> [(ChildId, IO ChildSpec)]
       -> IO Reason
 runSupervisor strategy maxRestart maxRestartTime specs = do
     state <- mkSupervisor strategy maxRestart maxRestartTime specs
-    runServer () state sinit server
+    runServer () state startup server
   where
-    sinit = startup >> return Nothing
     server = mkServer wait onMessage terminate
 
 
@@ -107,15 +106,14 @@ wait = do
 
 
 onMessage :: Either WorkerMessage SupervisorMessage
-          -> Process () SupervisorState (Maybe Reason)
+          -> Process () SupervisorState ()
 onMessage message = do
     case message of
         Left (Dead cid reason) ->
             restartChild cid reason
         Right (Add cid spec) ->
-            addChild cid spec >> return Nothing
-        Right Terminate ->
-            return $ Just Shutdown
+            addChild cid spec
+        Right Terminate -> stopProcess Shutdown
 
 
 startup :: Process () SupervisorState ()
@@ -161,6 +159,7 @@ shutdownChild cid = do
         return ()
 
 
+restartChild :: ChildId -> Reason -> Process () SupervisorState ()
 restartChild cid reason = do
     crashes <- gets sCrashTime
     maxRestart <- gets sMaxRestart
@@ -170,10 +169,10 @@ restartChild cid reason = do
     modify $ \s -> s { sCrashTime = crashes' }
     if needRestart maxRestart maxRestartTime crashes'
         then restartChild' cid reason
-        else return $ Just reason
+        else stopProcess reason
 
 
-restartChild' :: ChildId -> Reason -> Process () SupervisorState (Maybe Reason)
+restartChild' :: ChildId -> Reason -> Process () SupervisorState ()
 restartChild' cid reason = do
     specs <- gets sChildSpec
     workers <- gets sChildThread
@@ -185,7 +184,6 @@ restartChild' cid reason = do
             when (applyRestartPolicy (csRestart spec2) reason) $
                 restartChild'' cid spec1 reason
         _ -> return ()
-    return Nothing
 
 
 restartChild'' cid spec reason = do

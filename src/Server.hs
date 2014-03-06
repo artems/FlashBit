@@ -1,9 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Server
-    ( Reason(..)
-    , Timeout
-    , mkServer
+    ( mkServer
     , mkServerWithTimeout
     , runServer
     ) where
@@ -17,53 +15,34 @@ import qualified System.Timeout as T
 import Process
 
 
-type Timeout = Int
-
-data Reason
-    = Normal
-    | Timeout
-    | Shutdown
-    | Exception SomeException
-    | UserReason String
-    deriving (Show)
-
-
-instance Eq Reason where
-    Normal == Normal = True
-    Timeout == Timeout = True
-    Shutdown == Shutdown = True
-    UserReason a == UserReason b = a == b
-    _ == _ = False
-
-
 data Server c s m = Server
     { srvWait       :: Process c s m
-    , srvTimeout    :: Maybe Timeout
-    , srvOnTimeout  :: Process c s (Maybe Reason)
-    , srvOnMessage  :: m -> Process c s (Maybe Reason)
+    , srvTimeout    :: Maybe Int
+    , srvOnTimeout  :: Process c s ()
+    , srvOnMessage  :: m -> Process c s ()
     , srvTerminate  :: Reason -> Process c s ()
     }
 
 
 mkServer :: Process c s m
-         -> (m -> Process c s (Maybe Reason))
+         -> (m -> Process c s ())
          -> (Reason -> Process c s ())
          -> Server c s m
 mkServer wait onMessage terminate
     = Server
     { srvWait = wait
     , srvTimeout = Nothing
-    , srvOnTimeout = return $ Just Timeout
+    , srvOnTimeout = stopProcess Timeout
     , srvOnMessage = onMessage
     , srvTerminate = terminate
     }
 
 mkServerWithTimeout
     :: Process c s m
-    -> (m -> Process c s (Maybe Reason))
+    -> (m -> Process c s ())
     -> (Reason -> Process c s ())
-    -> Timeout
-    -> Process c s (Maybe Reason)
+    -> Int
+    -> Process c s ()
     -> Server c s m
 mkServerWithTimeout wait onMessage terminate timeout onTimeout =
     let server = mkServer wait onMessage terminate
@@ -73,22 +52,31 @@ mkServerWithTimeout wait onMessage terminate timeout onTimeout =
         }
 
 
-runServer :: c -> s -> Process c s (Maybe Reason) -> Server c s m -> IO Reason
+runP conf state proc = do
+    result <- (execProcess conf state proc >>= return . Right)
+        `catches`
+            [ Handler (\(StopProcessException reason) -> return . Left $ reason)
+            , Handler (\(e :: SomeException) -> return . Left $ Exception e)
+            ]
+    return result
+
+
+runServer :: c -> s -> Process c s () -> Server c s m -> IO Reason
 runServer conf state init server = do
-    (reason, state') <- runProcess conf state init
-    startup conf state' server reason
+    result <- runP conf state init
+    case result of
+        Left reason -> return reason
+        Right state' -> startup conf state' server
 
 
-startup :: c -> s -> Server c s m -> Maybe Reason -> IO Reason
-startup _conf _state _server (Just reason) =
-    return reason
-
-startup conf state server Nothing = do
+startup :: c -> s -> Server c s m -> IO Reason
+startup conf state server = do
     stateT <- newTVarIO state
     reason <- loop conf state server stateT
         `catch` (\(e :: SomeException) -> return (Exception e))
     state' <- atomically $ readTVar stateT
-    runProcess conf state' $ srvTerminate server reason
+    -- NOTE: ignore exeption raised from terminate process
+    _ <- runP conf state' $ srvTerminate server reason
     return reason
 
 
@@ -99,17 +87,17 @@ loop conf state server stateT = do
         Nothing -> Just `fmap` waitForEvent
     onEvent conf state server stateT event
   where
-    -- NOTE: state changes ignored
+    -- NOTE: ignore state changes from wait process
     waitForEvent = evalProcess conf state $ srvWait server
 
 
 onEvent :: c -> s -> Server c s m -> TVar s -> Maybe m -> IO Reason
 onEvent conf state server stateT event = do
-    (reason, state') <- runProcess conf state (proc event)
-    case reason of
-        Just reason ->
+    result <- runP conf state (proc event)
+    case result of
+        Left reason ->
             return reason
-        Nothing -> do
+        Right state' -> do
             atomically $ writeTVar stateT state'
             loop conf state' server stateT
   where
