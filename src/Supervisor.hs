@@ -1,9 +1,9 @@
 module Supervisor
-    ( RestartPolicy(..)
-    , RestartStrategy(..)
-    , ChildId
+    ( ChildId
     , ChildType(..)
     , ChildSpec(..)
+    , RestartPolicy(..)
+    , RestartStrategy(..)
     , SupervisorMessage(..)
     , runSupervisor
     ) where
@@ -59,13 +59,13 @@ data SupervisorMessage
 
 
 data SupervisorState = SupervisorState
-    { sStrategy :: RestartStrategy
-    , sMaxRestart :: Int
-    , sMaxRestartTime :: Int
-    , sCrashTime :: [UTCTime]
-    , sCommandChan :: TChan SupervisorMessage
-    , sChildSpec :: M.Map ChildId (IO ChildSpec)
-    , sChildThread :: M.Map ChildId (ThreadId, TMVar Reason, ChildSpec)
+    { sStrategy         :: RestartStrategy
+    , sMaxRestart       :: Int
+    , sMaxRestartTime   :: Int
+    , sCrashTime        :: [UTCTime]
+    , sCommandChan      :: TChan SupervisorMessage
+    , sChildSpec        :: M.Map ChildId (IO ChildSpec)
+    , sChildThread      :: M.Map ChildId (ThreadId, TMVar Reason, ChildSpec)
     }
 
 

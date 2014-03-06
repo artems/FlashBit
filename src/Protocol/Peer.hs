@@ -50,6 +50,7 @@ instance Binary Message where
 
 
 data Handshake = Handshake PeerId InfoHash [Capabilities]
+    deriving (Show)
 
 instance Binary Handshake where
     get = getHandshake

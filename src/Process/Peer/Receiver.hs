@@ -1,5 +1,6 @@
 module Process.Peer.Receiver
-    ( start
+    ( runReceiver
+    , specReceiver
     ) where
 
 
@@ -13,37 +14,14 @@ import qualified Data.ByteString as B
 import Network.Socket (Socket)
 import qualified Network.Socket.ByteString as SB
 
+
+import Server
 import Process
-import Process.Peer.Chan
+import Supervisor
 import Protocol.Peer
-import Server hiding (start)
-import qualified Server
 
+import Process.Peer.Chan
 
-data ReceiverMessage = Stoped Reason
-
-
-start :: Socket -> TChan PeerMessage -> (Reason -> IO ()) -> IO (TMVar Reason)
-start sock fromChan userTermination = do
-    chan <- newTChanIO
-    receiverId <- startReceiver sock fromChan (writeReason chan)
-    Server.start receiverId chan server userTermination
-  where
-    writeReason chan = \reason -> atomically $ writeTChan chan (Stoped reason)
-
-
-
-server :: Server ThreadId ReceiverMessage
-server = dummyServer
-    { srvOnMessage = onMessage
-    , srvTerminate = onTerminate
-    }
-
-onMessage _state (Stoped reason) = do
-    return $ Left reason
-
-onTerminate receiverThreadId _reason = do
-    killThread receiverThreadId
 
 
 data PConf = PConf
@@ -51,15 +29,24 @@ data PConf = PConf
     , cMessageChan :: TChan PeerMessage
     }
 
-startReceiver :: Socket -> TChan PeerMessage -> (Reason -> IO ()) -> IO ThreadId
-startReceiver sock chan userTermination
-    = forkFinally proc termination
+
+runReceiver :: Socket -> TChan PeerMessage -> IO Reason
+runReceiver sock chan = do
+    execProcess conf () receive
+    return Normal
   where
     conf = PConf sock chan
-    proc = execProcess conf () receive
-    termination e = case e of
-        Left e  -> userTermination (Exception e)
-        Right _ -> userTermination Normal
+
+
+specReceiver :: Socket -> TChan PeerMessage -> IO ChildSpec
+specReceiver sock chan = do
+    return $ ChildSpec
+        { csType = Worker
+        , csAction = runReceiver sock chan
+        , csRestart = Transient
+        , csShutdown = return ()
+        , csShutdownTimeout = 100
+        }
 
 
 receive :: Process PConf () ()

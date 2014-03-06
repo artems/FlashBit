@@ -25,16 +25,16 @@ library
 
   exposed-modules:
     BCode
+    Server
     Process
+    Supervisor
     -- Process.Peer
-    -- Process.Peer.Sender
-    -- Process.Peer.Handler
-    -- Process.Peer.Receiver
-    -- Process.Peer.Supervisor
+    Process.Peer.Sender
+    Process.Peer.Handler
+    Process.Peer.Receiver
+    Process.Peer.Supervisor
     Protocol.Peer
     Protocol.Types
-    Server
-    Supervisor
 
 
   build-depends:

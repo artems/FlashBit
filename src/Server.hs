@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Server
-    ( mkServer
+    ( Server
+    , mkServer
     , mkServerWithTimeout
     , runServer
     ) where
@@ -28,13 +29,13 @@ mkServer :: Process c s m
          -> (m -> Process c s ())
          -> (Reason -> Process c s ())
          -> Server c s m
-mkServer wait onMessage terminate
+mkServer wait receive terminate
     = Server
     { srvWait = wait
     , srvTimeout = Nothing
-    , srvOnTimeout = stopProcess Timeout
-    , srvOnMessage = onMessage
+    , srvOnMessage = receive
     , srvTerminate = terminate
+    , srvOnTimeout = stopProcess Timeout
     }
 
 mkServerWithTimeout
@@ -44,14 +45,15 @@ mkServerWithTimeout
     -> Int
     -> Process c s ()
     -> Server c s m
-mkServerWithTimeout wait onMessage terminate timeout onTimeout =
-    let server = mkServer wait onMessage terminate
+mkServerWithTimeout wait receive terminate timeout onTimeout =
+    let server = mkServer wait receive terminate
     in  server
         { srvTimeout = Just timeout
         , srvOnTimeout = onTimeout
         }
 
 
+runP :: c -> s -> Process c s () -> IO (Either Reason s)
 runP conf state proc = do
     result <- (execProcess conf state proc >>= return . Right)
         `catches`

@@ -1,23 +1,28 @@
 module Process.Peer.Handler
-    ( start
+    ( runHandler
+    , specHandler
     ) where
 
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.State
+import Control.Monad.Reader (liftIO, asks)
 
 import Network.Socket (Socket)
 
+
+import Server
 import Process
-import Process.Peer.Chan
+import Supervisor
 import Protocol.Peer
 
-import Server hiding (start)
-import qualified Server
+import Process.Peer.Chan
 
 
 data PConf = PConf
-    { cSendChan :: TChan Message
+    { cStopVar  :: TMVar ()
+    , cSendChan :: TChan Message
+    , cFromChan :: TChan PeerMessage
     }
 
 data PState = PState
@@ -35,17 +40,8 @@ data PState = PState
     }
 
 
-
-start :: TChan PeerMessage -> TChan Message
-      -> (Reason -> IO ())
-      -> IO (TMVar Reason)
-start fromChan sendChan userTermination = do
-    let conf = PConf sendChan
-        state = initState
-    Server.start (conf, state) fromChan server userTermination
-
-
-initState = PState
+mkState :: PState
+mkState = PState
     { weChoke = True
     , peerChoke = True
     , weInterested = False
@@ -54,18 +50,46 @@ initState = PState
     }
 
 
--- TODO timeout => close connection
-server ::  Server (PConf, PState) PeerMessage
-server = dummyServer
-    { srvOnMessage = onMessage
-    }
+runHandler :: TChan PeerMessage -> TChan Message -> TMVar () -> IO Reason
+runHandler fromChan sendChan stop =
+    runServer conf state startup server
+  where
+    conf = PConf stop sendChan fromChan
+    state = mkState
+    server = mkServer wait receive terminate
+    startup = return ()
+    terminate = \_ -> return ()
 
-onMessage state (PeerHandshake handshake) = do
-    return $ Right state
 
-onMessage (conf, state) (PeerMessage message) = do
-    state' <- execProcess conf state (handleMessage message)
-    return $ Right (conf, state')
+specHandler :: TChan PeerMessage -> TChan Message -> IO ChildSpec
+specHandler fromChan sendChan = do
+    stop <- newEmptyTMVarIO
+    return $ ChildSpec
+        { csType = Worker
+        , csAction = runHandler fromChan sendChan stop
+        , csRestart = Transient
+        , csShutdown = atomically $ putTMVar stop ()
+        , csShutdownTimeout = 100
+        }
+
+
+wait :: Process PConf PState (Either () PeerMessage)
+wait = do
+    stop <- asks cStopVar
+    chan <- asks cFromChan
+    liftIO . atomically $ orElse
+        (takeTMVar stop >>= return . Left)
+        (readTChan chan >>= return . Right)
+
+
+receive :: Either () PeerMessage -> Process PConf PState ()
+receive (Left _) = stopProcess Shutdown
+receive (Right (PeerMessage message)) = do
+    liftIO . print $ message
+    -- handleMessage message
+receive (Right (PeerHandshake handshake)) = do
+    liftIO . print $ handshake
+    return ()
 
 
 handleMessage :: Message -> Process PConf PState ()

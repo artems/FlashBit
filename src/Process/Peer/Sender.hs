@@ -1,5 +1,6 @@
 module Process.Peer.Sender
-    ( start
+    ( runSender
+    , specSender
     ) where
 
 import Control.Concurrent
@@ -12,43 +13,72 @@ import qualified Data.ByteString as B
 import Network.Socket (Socket)
 import qualified Network.Socket.ByteString as SB
 
+
+import Server
 import Process
-import Process.Peer.Chan
+import Supervisor
 import Protocol.Peer
-import Server hiding (start)
-import qualified Server
+
+import Process.Peer.Chan
 
 
-data PState = PState
-    { sSocket :: Socket
-    , sHandshake :: Handshake
+data PConf = PConf
+    { cSocket :: Socket
+    , cStopVar :: TMVar ()
+    , cMessageChan :: TChan Message
     }
 
 
-start :: Socket -> Handshake -> TChan Message -> (Reason -> IO ()) -> IO (TMVar Reason)
-start sock handshake chan userTermination = do
-    let state = PState sock handshake
-    Server.start state chan server userTermination
+runSender :: Socket -> Handshake -> TChan Message -> TMVar () -> IO Reason
+runSender sock handshake chan stop =
+    runServer conf () (startup handshake) server
+  where
+    conf = PConf sock stop chan
+    server = mkServerWithTimeout wait receive terminate (60000 * 1000) timeout
+    terminate = \_ -> return ()
 
 
--- TODO timeout => send keep-alive
-server :: Server PState Message
-server = dummyServer
-    { srvInit = sendHandshake
-    , srvOnMessage = sendMessage
-    }
+specSender :: Socket -> Handshake -> TChan Message -> IO ChildSpec
+specSender sock handshake chan = do
+    stop <- newEmptyTMVarIO
+    return $ ChildSpec
+        { csType = Worker
+        , csAction = runSender sock handshake chan stop
+        , csRestart = Transient
+        , csShutdown = atomically $ putTMVar stop ()
+        , csShutdownTimeout = 100
+        }
 
 
-sendHandshake :: PState -> IO (Response PState)
-sendHandshake state@(PState { sSocket = sock, sHandshake = handshake }) = do
-    liftIO . putStrLn $ "send handshake"
-    SB.sendAll sock (encodeHandshake handshake)
-    return $ Right state
+wait :: Process PConf () (Either () Message)
+wait = do
+    stop <- asks cStopVar
+    chan <- asks cMessageChan
+    liftIO . atomically $ orElse
+        (takeTMVar stop >>= return . Left)
+        (readTChan chan >>= return . Right)
 
 
-sendMessage :: PState -> Message -> IO (Response PState)
-sendMessage state@(PState { sSocket = sock }) message = do
-    SB.sendAll sock (encodeMessage message)
-    return $ Right state
+startup :: Handshake -> Process PConf () ()
+startup handshake = do
+    sock <- asks cSocket
+    liftIO $ SB.sendAll sock (encodeHandshake handshake)
+
+
+receive :: Either () Message -> Process PConf () ()
+receive (Left _) = stopProcess Shutdown
+receive (Right message) = sendMessage message
+
+
+timeout :: Process PConf () ()
+timeout = do
+    liftIO . putStrLn $ "send keep-alive"
+    sendMessage KeepAlive
+
+
+sendMessage :: Message -> Process PConf () ()
+sendMessage message = do
+    sock <- asks cSocket
+    liftIO $ SB.sendAll sock (encodeMessage message)
 
 
