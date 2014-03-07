@@ -26,6 +26,8 @@ import Process.Console as Console
 import Torrent
 import Protocol.Types
 import Version (version)
+import Server
+import Supervisor
 
 
 main :: IO ()
@@ -107,7 +109,7 @@ download opts files = do
 
     waitMutex <- newEmptyTMVarIO
 
-    Console.run
+    runDownload waitMutex
     -- _ <- Status.start statusTV statusChan
     -- _ <- Console.start waitMutex statusChan
     -- _ <- TorrentManager.start peerId statusTV statusChan torrentChan
@@ -115,13 +117,15 @@ download opts files = do
     -- atomically $ writeTChan torrentChan (map AddTorrent files)
     -- atomically $ takeTMVar waitMutex
     debugM "Main" "Завершаем работу"
+    threadDelay (1000)
     return ()
 
 
 runDownload :: TMVar () -> IO Reason
 runDownload waitMutex = do
+    superChan <- newTChanIO
     let specs =
-            [ ("console", Console.specConsole waitMutex)
+            [ ("console", Console.specConsole waitMutex superChan)
             ]
-    runSupervisor OneForOne 3 60 specs
+    runSupervisor OneForOne 5 60 superChan specs
 

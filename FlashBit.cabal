@@ -60,7 +60,8 @@ library
     binary == 0.7.*,
     network == 2.4.*,
     cryptohash == 0.11.*,
-    time == 1.4.*
+    time == 1.4.*,
+    hslogger == 1.2.*
 
   ghc-options:         -Wall
   default-language:    Haskell2010

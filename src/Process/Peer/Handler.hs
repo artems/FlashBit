@@ -29,8 +29,6 @@ data PState = PState
     , isEndgame         :: Bool
     -- , peerPieceArray    :: Set PieceNum
     -- , interestingPieces :: Set PieceNum
-    -- , pieceTickCounter      :: Int -- ^ Cчетчик, сбрасывается при получении сообщения piece
-    -- , keeAliveTickCounter   :: Int -- ^ Счетчик, сбрасывается при любом сообщении для пира
     -- , upRate            :: Rate
     -- , downRate          :: Rate
     }
@@ -38,11 +36,11 @@ data PState = PState
 
 mkState :: PState
 mkState = PState
-    { weChoke = True
-    , peerChoke = True
-    , weInterested = False
+    { weChoke        = True
+    , peerChoke      = True
+    , weInterested   = False
     , peerInterested = False
-    , isEndgame = False
+    , isEndgame      = False
     }
 
 

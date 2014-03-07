@@ -69,10 +69,11 @@ data SupervisorState = SupervisorState
     }
 
 
-mkSupervisor :: RestartStrategy -> Int -> Int -> [(ChildId, IO ChildSpec)]
+mkSupervisor :: RestartStrategy -> Int -> Int
+             -> TChan SupervisorMessage
+             -> [(ChildId, IO ChildSpec)]
              -> IO SupervisorState
-mkSupervisor strategy maxRestart maxRestartTime specs = do
-    commandChan <- newTChanIO
+mkSupervisor strategy maxRestart maxRestartTime commandChan specs = do
     return $ SupervisorState
         { sStrategy = strategy
         , sMaxRestart = maxRestart
@@ -84,10 +85,12 @@ mkSupervisor strategy maxRestart maxRestartTime specs = do
         }
 
 
-runSupervisor :: RestartStrategy -> Int -> Int -> [(ChildId, IO ChildSpec)]
-      -> IO Reason
-runSupervisor strategy maxRestart maxRestartTime specs = do
-    state <- mkSupervisor strategy maxRestart maxRestartTime specs
+runSupervisor :: RestartStrategy -> Int -> Int
+    -> TChan SupervisorMessage
+    -> [(ChildId, IO ChildSpec)]
+    -> IO Reason
+runSupervisor strategy maxRestart maxRestartTime chan specs = do
+    state <- mkSupervisor strategy maxRestart maxRestartTime chan specs
     runServer () state startup server
   where
     server = mkServer wait onMessage terminate

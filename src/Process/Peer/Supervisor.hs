@@ -33,11 +33,12 @@ runPeer peer handshake = do
     sock <- connect peer
     fromChan <- newTChanIO
     sendChan <- newTChanIO
+    superChan <- newTChanIO
     let specs =
             [ ("sender", specSender sock handshake sendChan)
             , ("handler", specHandler fromChan sendChan)
             , ("receiver", specReceiver sock fromChan)
             ]
-    runSupervisor OneForAll 0 90 specs
+    runSupervisor OneForAll 0 90 superChan specs
 
 
