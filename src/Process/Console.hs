@@ -31,8 +31,8 @@ data Command
     deriving (Eq, Show)
 
 
-runConsole :: TMVar () -> TChan SupervisorMessage -> IO Reason
-runConsole waitMutex superChan = do
+runConsole :: TMVar () -> TChan SupervisorMessage -> TChan SupervisorMessage -> IO Reason
+runConsole waitMutex superChan consoleChan = do
     cmdChan <- newTChanIO
     outChan <- newTChanIO
     let specs =
@@ -40,17 +40,18 @@ runConsole waitMutex superChan = do
             , ("writer", specWriter outChan)
             , ("handler", specHandler cmdChan outChan waitMutex superChan)
             ]
-    runSupervisor OneForOne 3 60 superChan specs
+    runSupervisor OneForOne 3 60 consoleChan specs
 
 
 specConsole :: TMVar () -> TChan SupervisorMessage -> IO ChildSpec
 specConsole waitMutex superChan = do
+    consoleChan <- newTChanIO
     return $ ChildSpec
         { csType = Worker
-        , csAction = runConsole waitMutex superChan
+        , csAction = runConsole waitMutex superChan consoleChan
         , csRestart = Permanent
-        , csShutdown = return ()
-        , csShutdownTimeout = 0
+        , csShutdown = atomically $ writeTChan consoleChan Terminate
+        , csShutdownTimeout = 1000
         }
 
 
@@ -129,7 +130,7 @@ specReader cmdChan = do
         , csAction = reader cmdChan
         , csRestart = Permanent
         , csShutdown = return ()
-        , csShutdownTimeout = 100
+        , csShutdownTimeout = 0
         }
 
 
@@ -140,7 +141,7 @@ specWriter outChan = do
         , csAction = writer outChan
         , csRestart = Permanent
         , csShutdown = return ()
-        , csShutdownTimeout = 100
+        , csShutdownTimeout = 0
         }
 
 
@@ -151,6 +152,6 @@ specHandler cmdChan outChan waitMutex superChan = do
         , csAction = handler cmdChan outChan waitMutex superChan
         , csRestart = Permanent
         , csShutdown = return ()
-        , csShutdownTimeout = 100
+        , csShutdownTimeout = 0
         }
 

@@ -117,7 +117,7 @@ download opts files = do
     -- atomically $ writeTChan torrentChan (map AddTorrent files)
     -- atomically $ takeTMVar waitMutex
     debugM "Main" "Завершаем работу"
-    threadDelay (1000)
+    threadDelay 1000
     return ()
 
 
