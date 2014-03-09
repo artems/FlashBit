@@ -24,29 +24,20 @@ library
   hs-source-dirs:   src
 
   exposed-modules:
+    Rate
     BCode
+    Torrent
+    FS
     BCodeTorrent
     BCodeTracker
-
-    URI
-    Timer
-    Digest
-    Version
-
-    Server
-    Process
-    Supervisor
-
-    Torrent
+    Protocol
     Protocol.Peer
-    Protocol.Types
-
-    Process.Console
-    Process.Peer.Sender
-    Process.Peer.Handler
-    Process.Peer.Receiver
-    Process.Peer.Supervisor
-
+    Platform.Process
+    Platform.Server
+    Digest
+    Timer
+    URI
+    Version
 
   build-depends:
     base == 4.*,
@@ -61,10 +52,12 @@ library
     network == 2.4.*,
     cryptohash == 0.11.*,
     time == 1.4.*,
+    filepath == 1.3.*,
+    directory == 1.2.*,
     hslogger == 1.2.*
 
-  ghc-options:         -Wall
-  default-language:    Haskell2010
+  ghc-options:      -Wall
+  default-language: Haskell2010
 
 
 executable flashbit-cli
@@ -86,7 +79,8 @@ executable flashbit-cli
     random   == 1.0.*,
     hslogger == 1.2.*
 
-  default-language:    Haskell2010
+  ghc-options:      -Wall
+  default-language: Haskell2010
 
 
 test-suite flashbit-specs

@@ -21,7 +21,8 @@ build: conf
 
 .PHONY: test
 test: conf
-	$(CABAL) test --show-details=always
+#	$(CABAL) test --show-details=always
+	$(CABAL) test
 
 .PHONY: fast-test
 fast-test:
