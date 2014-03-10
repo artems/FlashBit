@@ -6,16 +6,16 @@ module Platform.Supervisor
     , RestartStrategy(..)
     , SupervisorMessage(..)
     , runSupervisor
+    , runSupervisor'
     ) where
 
 
 import Data.Time.Clock
 import qualified Data.Map as M
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, isJust, fromJust)
 
 import Control.Concurrent
 import Control.Concurrent.STM
-import Control.Monad (when)
 import Control.Monad.State hiding (state)
 
 import qualified System.Timeout as T
@@ -64,6 +64,7 @@ data SupervisorState = SupervisorState
     , sMaxRestartTime   :: Int
     , sCrashTime        :: [UTCTime]
     , sCommandChan      :: TChan SupervisorMessage
+    , sChildOrder       :: [ChildId]
     , sChildSpec        :: M.Map ChildId (IO ChildSpec)
     , sChildThread      :: M.Map ChildId (ThreadId, TMVar Reason, ChildSpec)
     }
@@ -80,12 +81,14 @@ mkSupervisor strategy maxRestart maxRestartTime commandChan specs = do
         , sMaxRestartTime = maxRestartTime
         , sCrashTime = []
         , sCommandChan = commandChan
+        , sChildOrder = reverse $ map fst specs
         , sChildSpec = M.fromList specs
         , sChildThread = M.empty
         }
 
 
-runSupervisor :: RestartStrategy -> Int -> Int
+runSupervisor
+    :: RestartStrategy -> Int -> Int
     -> TChan SupervisorMessage
     -> [(ChildId, IO ChildSpec)]
     -> IO Reason
@@ -94,6 +97,19 @@ runSupervisor strategy maxRestart maxRestartTime chan specs = do
     runServer () state startup server
   where
     server = mkServer wait onMessage terminate
+
+runSupervisor'
+    :: RestartStrategy -> Int -> Int
+    -> Process () SupervisorState ()
+    -> (Reason -> Process () SupervisorState ())
+    -> TChan SupervisorMessage
+    -> [(ChildId, IO ChildSpec)]
+    -> IO Reason
+runSupervisor' strategy maxRestart maxRestartTime startup' terminate' chan specs  = do
+    state <- mkSupervisor strategy maxRestart maxRestartTime chan specs
+    runServer () state (startup' >> startup) server
+  where
+    server = mkServer wait onMessage (\reason -> terminate reason >> terminate' reason)
 
 
 wait :: Process () SupervisorState (Either WorkerMessage SupervisorMessage)
@@ -116,19 +132,29 @@ onMessage message = do
             restartChild cid reason
         Right (Add cid spec) ->
             addChild cid spec
-        Right Terminate -> stopProcess Shutdown
+        Right (Stop _cid) ->
+            undefined
+        Right (Delete _cid) ->
+            undefined
+        Right (Restart _cid) ->
+            undefined
+        Right Terminate ->
+            stopProcess Shutdown
 
 
 startup :: Process () SupervisorState ()
 startup = do
     specs <- gets sChildSpec
-    forM_ (M.assocs specs) $ \(id, spec) -> startChild id spec
+    children <- gets sChildOrder
+    forM_ (reverse children) $ \cid -> do
+        let spec = M.lookup cid specs
+        when (isJust spec) $ startChild cid (fromJust spec)
 
 
 terminate :: Reason -> Process () SupervisorState ()
 terminate _reason = do
-    threads <- gets sChildThread
-    forM_ (M.keys threads) shutdownChild
+    children <- gets sChildOrder
+    forM_ children shutdownChild
 
 
 startChild :: ChildId -> IO ChildSpec -> Process () SupervisorState ()
@@ -144,22 +170,23 @@ startChild cid spec' = do
 
 shutdownChild :: ChildId -> Process () SupervisorState ()
 shutdownChild cid = do
-    specs <- gets sChildSpec
     threads <- gets sChildThread
     let thread = M.lookup cid threads
     shutdownChild' thread
   where
+    shutdownChild' :: Maybe (ThreadId, TMVar Reason, ChildSpec) -> Process () SupervisorState ()
     shutdownChild' (Just (thread, stop, spec)) = do
         timeouted <- liftIO $ T.timeout (csShutdownTimeout spec) (shutdownAttempt spec stop)
-        when (isNothing timeouted) $
+        when (isNothing timeouted) $ do
             liftIO $ killThread thread
+            _ <- liftIO . atomically $ takeTMVar stop
+            return ()
         modify $ \s -> s { sChildThread = M.delete cid $ sChildThread s }
     shutdownChild' _ = return ()
 
     shutdownAttempt spec stop = do
         liftIO $ csShutdown spec
-        _ <- liftIO . atomically $ takeTMVar stop
-        return ()
+        liftIO . atomically $ takeTMVar stop
 
 
 restartChild :: ChildId -> Reason -> Process () SupervisorState ()
@@ -189,6 +216,7 @@ restartChild' cid reason = do
         _ -> return ()
 
 
+restartChild'' :: ChildId -> IO ChildSpec -> Reason -> Process () SupervisorState ()
 restartChild'' cid spec reason = do
     strategy <- gets sStrategy
     case strategy of
@@ -218,7 +246,10 @@ applyRestartPolicy policy reason
 
 addChild :: ChildId -> IO ChildSpec -> Process () SupervisorState ()
 addChild cid spec = do
-    modify $ \s -> s { sChildSpec = M.insert cid spec (sChildSpec s) }
+    modify $ \s -> s
+        { sChildSpec = M.insert cid spec (sChildSpec s)
+        , sChildOrder = cid : (sChildOrder s)
+        }
     startChild cid spec
 
 

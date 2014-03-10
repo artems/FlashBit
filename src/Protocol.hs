@@ -1,5 +1,5 @@
 module Protocol
-    ( Peer
+    ( Peer(..)
     , PeerId
     , InfoHash
     -- * Piece
