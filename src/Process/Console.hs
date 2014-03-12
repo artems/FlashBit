@@ -30,13 +30,14 @@ data Command
 
 runConsole :: TChan SupervisorMessage -> TChan Status.StatusMessage -> TChan SupervisorMessage -> IO Reason
 runConsole superChan statusChan consoleChan = do
-    cmdChan <- newTChanIO
-    outChan <- newTChanIO
-    let specs =
-            [ ("reader", specServer (reader cmdChan))
-            , ("writer", specServer (writer outChan))
-            , ("handler", specServer (handler cmdChan outChan superChan statusChan))
-            ]
+    let specs = do
+            cmdChan <- newTChanIO
+            outChan <- newTChanIO
+            return $
+                [ ("reader", specServer (reader cmdChan))
+                , ("writer", specServer (writer outChan))
+                , ("handler", specServer (handler cmdChan outChan superChan statusChan))
+                ]
     supervisor0 "Console" consoleChan specs
 
 

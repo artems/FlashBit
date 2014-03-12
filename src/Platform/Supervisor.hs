@@ -6,13 +6,12 @@ module Platform.Supervisor
     , RestartStrategy(..)
     , SupervisorMessage(..)
     , runSupervisor
-    , runSupervisor'
     ) where
 
 
 import Data.Time.Clock
 import qualified Data.Map as M
-import Data.Maybe (isNothing, isJust, fromJust)
+import Data.Maybe (isNothing)
 
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -51,10 +50,10 @@ data WorkerMessage
     = Dead ChildId Reason
 
 data SupervisorMessage
-    = Add ChildId (IO ChildSpec)
-    | Stop ChildId
-    | Delete ChildId
-    | Restart ChildId
+    = AddChild ChildId ChildSpec
+    | StopChild ChildId
+    | DeleteChild ChildId
+    | RestartChild ChildId
     | Terminate
 
 
@@ -65,14 +64,15 @@ data SupervisorState = SupervisorState
     , sCrashTime        :: [UTCTime]
     , sCommandChan      :: TChan SupervisorMessage
     , sChildOrder       :: [ChildId]
-    , sChildSpec        :: M.Map ChildId (IO ChildSpec)
+    , sChildStatic      :: IO [(ChildId, ChildSpec)]
+    , sChildDynamic     :: [(ChildId, ChildSpec)]
     , sChildThread      :: M.Map ChildId (ThreadId, TMVar Reason, ChildSpec)
     }
 
 
 mkSupervisor :: RestartStrategy -> Int -> Int
              -> TChan SupervisorMessage
-             -> [(ChildId, IO ChildSpec)]
+             -> IO [(ChildId, ChildSpec)]
              -> IO SupervisorState
 mkSupervisor strategy maxRestart maxRestartTime commandChan specs = do
     return $ SupervisorState
@@ -81,31 +81,20 @@ mkSupervisor strategy maxRestart maxRestartTime commandChan specs = do
         , sMaxRestartTime = maxRestartTime
         , sCrashTime = []
         , sCommandChan = commandChan
-        , sChildOrder = reverse $ map fst specs
-        , sChildSpec = M.fromList specs
+        , sChildOrder = []
+        , sChildStatic = specs
+        , sChildDynamic = []
         , sChildThread = M.empty
         }
 
-
 runSupervisor
-    :: RestartStrategy -> Int -> Int
-    -> TChan SupervisorMessage
-    -> [(ChildId, IO ChildSpec)]
-    -> IO Reason
-runSupervisor strategy maxRestart maxRestartTime chan specs = do
-    state <- mkSupervisor strategy maxRestart maxRestartTime chan specs
-    runServer () state startup server
-  where
-    server = mkServer wait onMessage terminate
-
-runSupervisor'
     :: RestartStrategy -> Int -> Int
     -> Process () SupervisorState ()
     -> (Reason -> Process () SupervisorState ())
     -> TChan SupervisorMessage
-    -> [(ChildId, IO ChildSpec)]
+    -> IO [(ChildId, ChildSpec)]
     -> IO Reason
-runSupervisor' strategy maxRestart maxRestartTime startup' terminate' chan specs  = do
+runSupervisor strategy maxRestart maxRestartTime startup' terminate' chan specs  = do
     state <- mkSupervisor strategy maxRestart maxRestartTime chan specs
     runServer () state (startup' >> startup) server
   where
@@ -121,7 +110,7 @@ wait = do
     liftIO . atomically $ waitMessage
   where
     myfold stm (cid, (_, stop, _)) = stm `orElse`
-        (takeTMVar stop >>= return . Left . Dead cid)
+        (readTMVar stop >>= return . Left . Dead cid)
 
 
 onMessage :: Either WorkerMessage SupervisorMessage
@@ -130,13 +119,13 @@ onMessage message = do
     case message of
         Left (Dead cid reason) ->
             restartChild cid reason
-        Right (Add cid spec) ->
+        Right (AddChild cid spec) ->
             addChild cid spec
-        Right (Stop _cid) ->
+        Right (StopChild _cid) ->
             undefined
-        Right (Delete _cid) ->
+        Right (DeleteChild _cid) ->
             undefined
-        Right (Restart _cid) ->
+        Right (RestartChild _cid) ->
             undefined
         Right Terminate ->
             stopProcess Shutdown
@@ -144,11 +133,13 @@ onMessage message = do
 
 startup :: Process () SupervisorState ()
 startup = do
-    specs <- gets sChildSpec
-    children <- gets sChildOrder
-    forM_ (reverse children) $ \cid -> do
-        let spec = M.lookup cid specs
-        when (isJust spec) $ startChild cid (fromJust spec)
+    static <- liftIO `fmap` gets sChildStatic
+    static' <- liftIO static
+    dynamic <- gets sChildDynamic
+    let children = if null dynamic then static' else static' ++ (reverse dynamic)
+    forM_ children $ \(cid, spec)-> do
+        startChild cid spec
+    modify $ \s -> s { sChildOrder = reverse (map fst children) }
 
 
 terminate :: Reason -> Process () SupervisorState ()
@@ -157,9 +148,8 @@ terminate _reason = do
     forM_ children shutdownChild
 
 
-startChild :: ChildId -> IO ChildSpec -> Process () SupervisorState ()
-startChild cid spec' = do
-    spec <- liftIO $ spec'
+startChild :: ChildId -> ChildSpec -> Process () SupervisorState ()
+startChild cid spec = do
     stop <- liftIO $ newEmptyTMVarIO
     thId <- liftIO $ forkFinally (csAction spec) (shutdown stop)
     modify $ \s -> s { sChildThread = M.insert cid (thId, stop, spec) $ sChildThread s }
@@ -195,33 +185,34 @@ restartChild cid reason = do
     maxRestart <- gets sMaxRestart
     maxRestartTime <- gets sMaxRestartTime
     curtime <- liftIO getCurrentTime
+
     let crashes' = take (maxRestart + 1) (curtime : crashes)
     modify $ \s -> s { sCrashTime = crashes' }
-    if needRestart maxRestart maxRestartTime crashes'
-        then restartChild' cid reason
-        else stopProcess reason
 
-
-restartChild' :: ChildId -> Reason -> Process () SupervisorState ()
-restartChild' cid reason = do
-    specs <- gets sChildSpec
     workers <- gets sChildThread
-    let spec = M.lookup cid specs
-        worker = M.lookup cid workers
-    case (spec, worker) of
-        (Just spec1, Just (_, _, spec2)) -> do
+    let worker = M.lookup cid workers
+    case worker of
+        Just (_, _, spec) -> do
             modify $ \s -> s { sChildThread = M.delete cid $ sChildThread s }
-            when (applyRestartPolicy (csRestart spec2) reason) $
-                restartChild'' cid spec1 reason
-        _ -> return ()
+            if needRestart maxRestart maxRestartTime crashes'
+                then restartChild' cid spec reason
+                else stopProcess reason
+        Nothing -> return()
 
 
-restartChild'' :: ChildId -> IO ChildSpec -> Reason -> Process () SupervisorState ()
+restartChild' :: ChildId -> ChildSpec -> Reason -> Process () SupervisorState ()
+restartChild' cid spec reason = do
+    when (applyRestartPolicy (csRestart spec) reason) $
+        restartChild'' cid spec reason
+
+
+restartChild'' :: ChildId -> ChildSpec -> Reason -> Process () SupervisorState ()
 restartChild'' cid spec reason = do
     strategy <- gets sStrategy
     case strategy of
         OneForOne -> startChild cid spec
-        OneForAll -> terminate reason >> startup
+        OneForAll -> do
+            terminate reason >> startup
 
 
 needRestart :: Int -> Int -> [UTCTime] -> Bool
@@ -244,11 +235,11 @@ applyRestartPolicy policy reason
 
 ------
 
-addChild :: ChildId -> IO ChildSpec -> Process () SupervisorState ()
+addChild :: ChildId -> ChildSpec -> Process () SupervisorState ()
 addChild cid spec = do
     modify $ \s -> s
-        { sChildSpec = M.insert cid spec (sChildSpec s)
-        , sChildOrder = cid : (sChildOrder s)
+        { sChildOrder = cid : sChildOrder s
+        , sChildDynamic = (cid, spec) : sChildDynamic s
         }
     startChild cid spec
 

@@ -40,9 +40,9 @@ specWorker action = return $
         , csShutdownTimeout = 0
         }
 
-specServer :: IO Reason -> IO ChildSpec
-specServer action = return $
-    ChildSpec
+specServer :: IO Reason -> ChildSpec
+specServer action
+    = ChildSpec
         { csType = Worker
         , csAction = action
         , csRestart = Permanent
@@ -50,9 +50,9 @@ specServer action = return $
         , csShutdownTimeout = 0
         }
 
-specServer2 :: TChan m -> m -> IO Reason -> IO ChildSpec
-specServer2 chan m action = return $
-    ChildSpec
+specServer2 :: TChan m -> m -> IO Reason -> ChildSpec
+specServer2 chan m action
+    = ChildSpec
         { csType = Worker
         , csAction = action
         , csRestart = Permanent
@@ -61,9 +61,9 @@ specServer2 chan m action = return $
         }
 
 
-specSupervisor :: IO Reason -> TChan SupervisorMessage -> IO ChildSpec
-specSupervisor action superChan = do
-    return $ ChildSpec
+specSupervisor :: IO Reason -> TChan SupervisorMessage -> ChildSpec
+specSupervisor action superChan
+    = ChildSpec
         { csType = Supervisor
         , csAction = action
         , csRestart = Permanent
@@ -100,10 +100,10 @@ process1 name conf state wait receive terminate =
 supervisor0
     :: String
     -> TChan SupervisorMessage
-    -> [(ChildId, IO ChildSpec)]
+    -> IO [(ChildId, ChildSpec)]
     -> IO Reason
 supervisor0 name superChan specs =
-    runSupervisor' OneForOne 3 60 startup terminate superChan specs
+    runSupervisor OneForOne 3 60 startup terminate superChan specs
   where
     startup = liftIO $ debugM name "Процесс запущен"
     terminate reason = liftIO $ debugM name $ printReason reason
@@ -125,15 +125,15 @@ printReason reason = case reason of
     Timeout ->
         "Процесс остановлен по таймауту"
     Shutdown ->
-        "Процесс остановлен по команде"
+        "Процесс остановлен по требованию"
     UserReason r ->
         "Процесс остановлен по причине: " ++ r
     Exception e -> foldr tryHandler defaultHandler handlers
       where
         handlers =
-            [ Handler (\ThreadKilled -> "остановлен супервайзером")
+            [ Handler (\ThreadKilled -> "Процесс остановлен супервайзером")
             ]
-        defaultHandler = "В процессе не обработано исключение: " ++ show e
+        defaultHandler = "В процессе произошла ошибка: " ++ show e
         tryHandler (Handler handler) res =
             case (fromException . toException) e of
                 Just e' -> handler e'
@@ -142,7 +142,6 @@ printReason reason = case reason of
 
 class ProcessName conf where
     processName :: conf -> String
-
 
 logP :: (ProcessName conf) => Priority -> String -> Process conf state ()
 logP priority message = do
@@ -163,4 +162,5 @@ warningP = logP WARNING
 
 criticalP :: (ProcessName conf) => String -> Process conf state ()
 criticalP = logP CRITICAL
+
 

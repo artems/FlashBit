@@ -107,7 +107,7 @@ startTorrent' bc torrent = do
         spec = specSupervisor (runTorrent peerId torrent defaultPort statusChan superChan) superChan
     liftIO . atomically $
         writeTChan torrentChan $
-            Add (B8.unpack (torrentInfoHash torrent)) spec
+            AddChild (B8.unpack (torrentInfoHash torrent)) spec
     -- start FS
     liftIO . atomically $
         writeTChan statusChan $
@@ -123,14 +123,15 @@ runTorrent :: [Char]
            -> TChan SupervisorMessage
            -> IO Reason
 runTorrent peerId torrent port' statusChan superChan = do
-    trackerChan <- newTChanIO
-    atomically $ writeTChan trackerChan Tracker.Start
-    let specs =
-            [ ("tracker", specServer2 trackerChan Tracker.Terminate $
-                 Tracker.runTracker peerId torrent port' statusChan trackerChan)
-            -- FS
-            -- PieceManager
-            ]
+    let specs = do
+            trackerChan <- newTChanIO
+            atomically $ writeTChan trackerChan Tracker.Start
+            return $
+                [ ("tracker", specServer2 trackerChan Tracker.Terminate $
+                     Tracker.runTracker peerId torrent port' statusChan trackerChan)
+                -- FS
+                -- PieceManager
+                ]
     supervisor0 "Torrent" superChan specs
 
 

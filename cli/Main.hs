@@ -117,28 +117,29 @@ download opts files = do
 
 runDownload :: PeerId -> [FilePath] -> IO Reason
 runDownload peerId files = do
-    statusTV <- newTVarIO []
     superChan <- newTChanIO
-    statusChan <- newTChanIO
-    consoleChan <- newTChanIO
-    torrentChan <- newTChanIO
-    torrentManagerChan <-newTChanIO
+    let specs = do
+            statusTV <- newTVarIO []
+            statusChan <- newTChanIO
+            consoleChan <- newTChanIO
+            torrentChan <- newTChanIO
+            torrentManagerChan <-newTChanIO
 
-    forM_ files $ \file ->
-        atomically $ writeTChan torrentManagerChan (TorrentManager.AddTorrent file)
+            forM_ files $ \file ->
+                atomically $ writeTChan torrentManagerChan (TorrentManager.AddTorrent file)
 
-    let status = specServer2 statusChan Status.Terminate
-            (Status.runStatus statusTV statusChan)
-        torrentManager = specServer2 torrentManagerChan TorrentManager.Terminate
-            (TorrentManager.runTorrentManager peerId statusTV statusChan torrentChan torrentManagerChan)
-        specs =
-            [ ("console", specSupervisor (Console.runConsole superChan statusChan consoleChan) consoleChan)
-            , ("status", status)
-            , ("torrent manager", torrentManager)
-            , ("torrent supervisor", specSupervisor (runTorrentSupervisor torrentChan) torrentChan)
-            ]
+            let status = specServer2 statusChan Status.Terminate
+                    (Status.runStatus statusTV statusChan)
+                torrentManager = specServer2 torrentManagerChan TorrentManager.Terminate
+                    (TorrentManager.runTorrentManager peerId statusTV statusChan torrentChan torrentManagerChan)
+            return $
+                [ ("console", specSupervisor (Console.runConsole superChan statusChan consoleChan) consoleChan)
+                , ("status", status)
+                , ("torrent manager", torrentManager)
+                , ("torrent supervisor", specSupervisor (runTorrentSupervisor torrentChan) torrentChan)
+                ]
     supervisor0 "Main" superChan specs
   where
-    runTorrentSupervisor chan = supervisor0 "TorrentSupervisor" chan []
+    runTorrentSupervisor chan = supervisor0 "TorrentSupervisor" chan (return [])
 
 

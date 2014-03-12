@@ -125,7 +125,9 @@ talkTracker = pokeTracker >>= timerUpdate
 
 pokeTracker :: Process PConf PState (Integer, Maybe Integer)
 pokeTracker = do
-    tStat <- torrentStatus
+    infoHash <- asks cInfoHash
+    statusChan <- asks cStatusChan
+    tStat <- torrentStatus infoHash statusChan
     response <- queryTracker tStat
     case response of
         Left msg -> do
@@ -141,13 +143,21 @@ pokeTracker = do
             infoP $ "Response decode error: " ++ B8.unpack msg
             return (failTimerInterval, Nothing)
         Right rsp -> do
+            trackerStat infoHash statusChan rsp
             eventTransition
             return (rTimeoutInterval rsp, rTimeoutMinInterval rsp)
   where
-    torrentStatus = do
+    trackerStat infoHash statusChan rsp = do
+        let trackerStat
+                = Status.TrackerStat
+                { Status.trackInfoHash = infoHash
+                , Status.trackComplete = rComplete rsp
+                , Status.trackIncomplete = rIncomplete rsp
+                }
+        liftIO . atomically $ writeTChan statusChan trackerStat
+
+    torrentStatus infoHash statusChan = do
         statusTV <- liftIO newEmptyTMVarIO
-        infoHash <- asks cInfoHash
-        statusChan <- asks cStatusChan
         liftIO . atomically $ writeTChan statusChan (Status.RequestStatus infoHash statusTV)
         liftIO . atomically $ takeTMVar statusTV
 
