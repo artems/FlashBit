@@ -1,19 +1,30 @@
 module Process.PeerManager
-    (
+    ( runPeerManager
     ) where
 
+import Control.Concurrent.STM
+import Control.Monad.State
+import Control.Monad.Reader
 
+import qualified Data.Map as M
+
+import Network.Socket
+
+import Process
+import Protocol
+import Platform.Process
 
 
 data PConf = PConf
-    { cPeerManagerChan  :: TChan PeerManagerMessage
+    { cPeerEventChan    :: TChan PeerEvent
+    , cPeerManagerChan  :: TChan PeerManagerMessage
     }
 
 data PState = PState
     { sPeerId      :: PeerId                 -- ^ Наш peer_id
-    , sPeerCount   :: Integer                -- ^ Кол-во активных пиров
+    , sPeerCount   :: Int                    -- ^ Кол-во активных пиров
     , sPeerQueue   :: [(InfoHash, Peer)]     -- ^ Очередь пиров для подключения
-    , sTorrent     :: M.Map InfoHash Torrent -- ^ Список торрентов. см. Torrent
+    , sTorrent     :: M.Map InfoHash TorrentLocal -- ^ Список торрентов. см. TorrentLocal
     }
 
 instance ProcessName PConf where
@@ -21,7 +32,7 @@ instance ProcessName PConf where
 
 
 -- ^ Эти данные передаются процессу при подключении пира
-data Torrent = Torrent
+data TorrentLocal = TorrentLocal
     { pPieceArray :: PieceArray
     }
 
@@ -30,8 +41,10 @@ data PeerManagerMessage
     | StopTorrent InfoHash
     | PeersFromTracker InfoHash [Peer]
     | NewIncoming (Socket, SockAddr)
-    | Connect infoHash peerId
-    | Disconnect peerId
+
+data PeerEvent
+    = Connect InfoHash
+    | Disconnect InfoHash
 
 
 numPeers :: Int
@@ -39,11 +52,11 @@ numPeers = 40
 
 
 runPeerManager :: PeerId -> TChan PeerManagerMessage -> IO Reason
-runPeerManager peerId statusChan torrentChan torrentManagerChan =
+runPeerManager peerId torrentManagerChan = do
+    peerEventChan <- newTChanIO
+    let conf  = PConf peerEventChan torrentManagerChan
+        state = PState peerId 0 [] M.empty
     process0 "PeerManager" conf state wait receive
-  where
-    conf = PConf peerChan
-    state =  PState peerId [] M.empty M.empty
 
 
 wait :: Process PConf PState (Either PeerEvent PeerManagerMessage)
@@ -63,37 +76,15 @@ receive event = do
     fillPeers
 
 
-fillPeers :: Process PConf PState ()
-fillPeers = do
-    count <- M.size `fmap` gets sActivePeers
-    when (count < numPeers) $ do
-        let addCount = numPeers - count
-        debugP $ "Подключаем новых " ++ show addCount ++ " пиров"
-        queue <- gets sPeerQueue
-        let (peers, rest) = splitAt addCount queue
-        mapM_ addPeer peers
-        modify (\state -> state { sPeerQueue = rest })
-
-
-addPeer :: (InfoHash, Peer) -> Process PConf PState ThreadId
-addPeer (infoHash, Peer addr) = do
-    peerId <- gets sPeerId
-    -- pool <- asks cPeerPool
-    mgrC <- asks mgrCh
-    cm   <- gets cChanManageMap
-    rateTV <- asks cRateTV
-    liftIO $ connect (addr, peerId, infoHash) pool mgrC rateTV cm
-
-
-
 incomingPeers :: PeerManagerMessage -> Process PConf PState ()
 incomingPeers message = case message of
    PeersFromTracker infoHash peers -> do
         debugP "Добавление новых пиров в очередь"
-        modify $ \s -> s { sPeerQueue = (map (infohash,) peers) ++ sPeerQueue s })
+        modify $ \s -> s { sPeerQueue = (map (\p -> (infoHash, p)) peers) ++ sPeerQueue s }
 
    NewTorrent infoHash torrent -> do
-        modify $ \s -> s { sChanManageMap = M.insert infoHash torrent (sChanManageMap s) })
+        debugP "Добавление торрента"
+        modify $ \s -> s { sTorrent = M.insert infoHash torrent (sTorrent s) }
 
    NewIncoming _conn -> do
         undefined
@@ -102,26 +93,38 @@ incomingPeers message = case message of
         undefined
 
 
-peerEvent :: PeerMessage -> Process PConf PState ()
-peerEvent msg
-    = case msg of
-        Connect infoHash tid chan ->
-            newPeer ih tid chan
-        Disconnect tid ->
-            removePeer tid
+peerEvent :: PeerEvent -> Process PConf PState ()
+peerEvent event = case event of
+    Connect _infoHash ->
+        newPeer
+    Disconnect _infoHash ->
+        removePeer
   where
-    newPeer infoHash tid chan = do
-        debugP $ "Подключаем пир " ++ show tid
-        chockChan <- asks chokeMgrCh
-        liftIO . atomically $ writeTChan chockChan (AddPeer infoHash tid chan)
-        peers <- M.insert tid chan <$> gets sActivePeers
-        modify (\s -> s { sActivePeers = peers })
+    newPeer = do
+        debugP $ "Подключаем пир"
+        modify $ \s -> s { sPeerCount = sPeerCount s + 1 }
 
-    removePeer threadId = do
-        debugP $ "Отключаем пир " ++ show threadId
-        chockChan <- asks cChokeManagerChan
-        liftIO . atomically $ writeTChan chockChan (RemovePeer threadId)
-        peers <- M.delete threadId <$> gets sActivePeers
-        modify (\s -> s { sActivePeers = peers })
+    removePeer = do
+        debugP $ "Отключаем пир"
+        modify $ \s -> s { sPeerCount = sPeerCount s - 1 }
+
+
+fillPeers :: Process PConf PState ()
+fillPeers = do
+    count <- gets sPeerCount
+    when (count < numPeers) $ do
+        let toAdd = numPeers - count
+        debugP $ "Подключаем новых " ++ show toAdd ++ " пиров"
+        queue <- gets sPeerQueue
+        let (peers, remain) = splitAt toAdd queue
+        modify $ \s -> s { sPeerQueue = remain }
+        mapM_ addPeer peers
+    return ()
+
+
+addPeer :: (InfoHash, Peer) -> Process PConf PState ()
+addPeer (_infoHash, _peer) = do
+    debugP "AddPeer: undefined"
+    return ()
 
 
