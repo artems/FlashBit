@@ -16,8 +16,9 @@ module Protocol
 
 
 import Data.Array (Array)
-import qualified Data.ByteString as B
 import qualified Data.Map as M
+import qualified Data.ByteString as B
+
 import Network.Socket (SockAddr)
 
 
@@ -47,8 +48,6 @@ type PieceBlockOffset = Integer
 type PieceArray = Array PieceNum Piece
 type PieceHaveMap = M.Map PieceNum Bool
 
-data Capabilities
-    = Fast
-    | Extended
+data Capabilities = Fast | Extended
     deriving (Show)
 

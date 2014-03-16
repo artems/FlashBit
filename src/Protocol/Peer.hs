@@ -1,12 +1,13 @@
 module Protocol.Peer
     ( Message(..)
+    , Handshake(..)
+    , messageSize
     , decodeMessage
     , encodeMessage
-    , Handshake(..)
+    , handshakeSize
     , decodeHandshake
     , encodeHandshake
     , buildBitField
-    , handshakeSize
     ) where
 
 

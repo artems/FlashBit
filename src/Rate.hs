@@ -11,11 +11,11 @@ import Data.Time.Clock
 
 
 data Rate = Rate
-    { rRate :: Double       -- ^ Текущая скорость
+    { rRate  :: Double      -- ^ Текущая скорость
     , rBytes :: Integer     -- ^ Кол-во байт переданных за минимальный период
     , rCount :: Integer     -- ^ Кол-во байт переданных с момета последнего обнуления
     , rSince :: UTCTime     -- ^ Момент начала отсчета скорости
-    , rLast :: UTCTime      -- ^ Момент последнего обновления скорости
+    , rLast  :: UTCTime     -- ^ Момент последнего обновления скорости
     }
 
 
@@ -26,11 +26,11 @@ minRatePeriod = fromInteger 20 -- Секунды
 
 mkRate :: UTCTime -> Rate
 mkRate timestamp = Rate
-    { rRate = 0
+    { rRate  = 0
     , rBytes = 0
     , rCount = 0
     , rSince = timestamp
-    , rLast = timestamp
+    , rLast  = timestamp
     }
 
 
@@ -50,9 +50,9 @@ extractRate timestamp rate = let
     newPeriod = realToFrac $ diffUTCTime timestamp since
     rateNum = (rRate rate * oldPeriod + fromIntegral bytes) / newPeriod
     newRate = rate
-        { rRate = rateNum
+        { rRate  = rateNum
         , rBytes = 0
-        , rLast = timestamp
+        , rLast  = timestamp
         , rSince = max since (addUTCTime (-minRatePeriod) timestamp)
         }
     in (rateNum, newRate)
@@ -62,4 +62,5 @@ extractCount :: Rate -> (Integer, Rate)
 extractCount rate = (count, rate { rCount = 0 })
   where
     count = rCount rate
+
 

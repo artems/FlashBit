@@ -40,6 +40,7 @@ data TorrentState
 defaultPort :: Word16
 defaultPort = 1579
 
+
 defaultBlockSize :: PieceBlockSize
 defaultBlockSize = 16384 -- bytes
 
