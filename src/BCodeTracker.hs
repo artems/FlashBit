@@ -8,35 +8,38 @@ module BCodeTracker
     , trackerIncomplete
     ) where
 
+import Control.Monad ((>=>))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 
 import Data.Maybe (fromMaybe)
 
 import BCode
+import BCodeAccess
 
 
 trackerPeers :: BCode -> Maybe (ByteString, ByteString)
 trackerPeers bc = do
-    v4 <- searchStr "peers" bc
-    v6 <- return $ fromMaybe (B.empty) (searchStr "peers6" bc)
+    v4 <- get "peers" bc >>= getString
+    v6 <- return $ fromMaybe (B.empty) (get "peers6" bc >>= getString)
     return (v4, v6)
 
 trackerError :: BCode -> Maybe ByteString
-trackerError = searchStr "failure reason"
+trackerError = get "failure reason" >=> getString
 
 trackerWarning :: BCode -> Maybe ByteString
-trackerWarning = searchStr "warning mesage"
+trackerWarning = get "warning mesage" >=> getString
 
 trackerInterval :: BCode -> Maybe Integer
-trackerInterval = searchInt "interval"
+trackerInterval = get "interval" >=> getNumber
 
 trackerMinInterval :: BCode -> Maybe Integer
-trackerMinInterval = searchInt "min interval"
+trackerMinInterval = get "min interval" >=> getNumber
 
 trackerComplete :: BCode -> Maybe Integer
-trackerComplete = searchInt "complete"
+trackerComplete = get "complete" >=> getNumber
 
 trackerIncomplete :: BCode -> Maybe Integer
-trackerIncomplete = searchInt "incomplete"
+trackerIncomplete = get "incomplete" >=> getNumber
+
 

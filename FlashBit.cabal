@@ -26,20 +26,13 @@ library
   exposed-modules:
     Rate
     BCode
+    BCodeAccess
     Torrent
     FS
     BCodeTorrent
     BCodeTracker
     Protocol
     Protocol.Peer
-    Platform.Process
-    Platform.Server
-    Platform.Supervisor
-    Process
-    Process.Console
-    Process.Status
-    Process.TorrentManager
-    Process.Tracker
     Digest
     Timer
     URI

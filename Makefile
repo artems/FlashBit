@@ -21,15 +21,12 @@ build: conf
 
 .PHONY: test
 test: conf
-#	$(CABAL) test --show-details=always
 	$(CABAL) test
-
-.PHONY: fast-test
-fast-test:
-	$(CABAL) test --show-details=always
-
+#	$(CABAL) test --show-details=always
 
 .PHONY: clean
 clean:
 	$(RM) -rf dist
 	$(RM) -rf .cabal-sandbox cabal.sandbox.config
+
+

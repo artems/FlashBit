@@ -1,11 +1,7 @@
 module BCode
     ( BCode(..)
-    , BCodePath(..)
     , encode
     , decode
-    , search
-    , searchInt
-    , searchStr
     ) where
 
 import Control.Applicative ((<$>), (<*>), (<|>), (*>), (<*))
@@ -93,30 +89,5 @@ encode = put
     int2bs = B8.pack . show
     encodePair :: (ByteString, BCode) -> ByteString
     encodePair (k, v) = put (BStr k) `B.append` put v
-
-
-data BCodePath
-    = BCodePInt Int
-    | BCodePStr String
-
-
-search :: [BCodePath] -> BCode -> Maybe BCode
-search [] a = Just a
-search (BCodePInt x:xs) (BList l)
-    | x < 0 || (x + 1) > length l = Nothing
-    | otherwise = search xs (l !! x)
-search (BCodePStr x:xs) (BDict d) =
-    M.lookup (B8.pack x) d >>= search xs
-search _ _ = Nothing
-
-searchInt :: String -> BCode -> Maybe Integer
-searchInt key bc = do
-    (BInt i) <- search [BCodePStr key] bc
-    return i
-
-searchStr :: String -> BCode -> Maybe ByteString
-searchStr key bc = do
-    (BStr s) <- search [BCodePStr key] bc
-    return s
 
 

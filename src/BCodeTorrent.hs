@@ -12,6 +12,7 @@ module BCodeTorrent
     , infoPieceLength
     ) where
 
+import Control.Monad ((>=>))
 import Control.Applicative ((<|>))
 import Control.Monad (forM)
 
@@ -20,21 +21,22 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 
 import BCode
+import BCodeAccess
 import Digest (digest)
 
 
 comment :: BCode -> Maybe ByteString
-comment = searchStr "comment"
+comment = get "comment" >=> getString
 
 announce :: BCode -> Maybe ByteString
-announce = searchStr "announce"
+announce = get "announce" >=> getString
 
 creationDate :: BCode -> Maybe ByteString
-creationDate = searchStr "creation date"
+creationDate = get "creation date" >=> getString
 
 announceList :: BCode -> Maybe [[ByteString]]
 announceList bc = do
-    (BList announce') <- search [BCodePStr "announce-list"] bc
+    announce' <- get "announce-list" bc >>= getList
     tracker <- mapM extract1 announce'
     mapM (mapM extract2) tracker
   where
@@ -44,14 +46,10 @@ announceList bc = do
     extract2 _          = Nothing
 
 infoName :: BCode -> Maybe ByteString
-infoName bc = do
-    (BStr name) <- search [BCodePStr "info", BCodePStr "name"] bc
-    return name
+infoName = get "info" >=> get "name" >=> getString
 
 infoHash :: BCode -> Maybe ByteString
-infoHash bc = do
-    info <- search [BCodePStr "info"] bc
-    return . digest . encode $ info
+infoHash = get "info" >=> return . digest . encode
 
 
 infoFiles :: BCode -> Maybe [([String], Integer)]
@@ -60,15 +58,15 @@ infoFiles bc = files1 <|> files2
     -- single-file torrent
     files1 = do
         name <- B8.unpack `fmap` infoName bc
-        (BInt len) <- search [BCodePStr "info", BCodePStr "length"] bc
+        len  <- return bc >>= get "info" >>= get "length" >>= getNumber
         return [([name], len)]
 
     -- multi-file torrent
     files2 = do
-        (BList files) <- search [BCodePStr "info", BCodePStr "files"] bc
+        files <- return bc >>= get "info" >>= get "files" >>= getList
         forM files $ \bc_file -> do
-            (BInt len) <- search [BCodePStr "length"] bc_file
-            (BList pathCoded) <- search [BCodePStr "path"] bc_file
+            len <- return bc_file >>= get "length" >>= getNumber
+            pathCoded <- return bc_file >>= get "path" >>= getList
             let path = map (\(BStr s) -> B8.unpack s) pathCoded
             return (path, len)
 
@@ -77,42 +75,32 @@ infoLength :: BCode -> Maybe Integer
 infoLength bc = length1 <|> length2
   where
     -- single-file torrent
-    length1 = do
-        (BInt len) <- search [BCodePStr "info", BCodePStr "length"] bc
-        return len
+    length1 = return bc >>= get "info" >>= get "length" >>= getNumber
 
     -- multi-file torrent
     length2 = do
-        (BList files) <- search [BCodePStr "info", BCodePStr "files"] bc
-        lengthBCode <- mapM (search [BCodePStr "length"]) files
-        lengthInt <- mapM unBInt lengthBCode
-        return (sum lengthInt)
-      where
-        unBInt (BInt i) = Just i
-        unBInt _        = Nothing
+        files   <- return bc >>= get "info" >>= get "files" >>= getList
+        length' <- mapM (get "length" >=> getNumber) files
+        return (sum length')
 
 
 infoPieces :: BCode -> Maybe [ByteString]
-infoPieces bc = do
-    (BStr pieces) <- search [BCodePStr "info", BCodePStr "pieces"] bc
-    return . split $ pieces
+infoPieces = get "info" >=> get "pieces" >=> getString >=> return . split
   where
     split str
-        | str == B.empty = []
-        | otherwise = let
-            (block, rest) = B.splitAt 20 str
-            in block : split rest
+        | B.null str = []
+        | otherwise  =
+            let (block, rest) = B.splitAt 20 str
+            in  block : split rest
 
 
 infoPieceCount :: BCode -> Maybe Integer
 infoPieceCount bc = do
-    (BStr pieces) <- search [BCodePStr "info", BCodePStr "pieces"] bc
+    pieces <- return bc >>= get "info" >>= get "pieces" >>= getString
     return $ fromIntegral (B.length pieces) `div` 20
 
 
 infoPieceLength :: BCode -> Maybe Integer
-infoPieceLength bc = do
-    (BInt length') <- search [BCodePStr "info", BCodePStr "piece length"] bc
-    return length'
+infoPieceLength = get "info" >=> get "piece length" >=> getNumber
 
 
