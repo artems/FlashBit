@@ -6,7 +6,6 @@ module Torrent
     , bytesLeft
     , mkPeerId
     , mkTorrent
-    , mkPieceArray
     ) where
 
 
@@ -22,7 +21,8 @@ import System.Random (StdGen, randomRs)
 import BCode (BCode)
 import qualified BCodeTorrent as BCode
 import Version (protoVersion)
-import Protocol
+import Piece
+import Peer
 
 
 data Torrent = Torrent
@@ -74,31 +74,5 @@ mkTorrent bc = do
         , torrentAnnounceURL = announceURL
         }
 
-
-mkPieceArray :: BCode -> Maybe PieceArray
-mkPieceArray bc = do
-    length' <- BCode.infoLength bc
-    pieceData <- BCode.infoPieces bc
-    pieceCount <- BCode.infoPieceCount bc
-    pieceLength' <- BCode.infoPieceLength bc
-    let pieceList = extract pieceLength' length' 0 pieceData
-        pieceArray = array (0, pieceCount - 1) (zip [0..] pieceList)
-    return pieceArray
-  where
-    extract :: Integer -> Integer -> Integer -> [B.ByteString] -> [Piece]
-    extract _ _ _ [] = []
-    extract pieceLength' length' offset (x:xs)
-        | length' <= 0
-            = error "mkPieceArray: Суммарный размер файлов не равен сумме размеров частей торрента"
-        | otherwise = piece : restPieces
-            where
-              piece = Piece
-                { pieceOffset = offset
-                , pieceLength = min length' pieceLength'
-                , pieceChecksum = x
-                }
-              newLength = length' - pieceLength'
-              newOffset = offset + pieceLength'
-              restPieces = extract pieceLength' newLength newOffset xs
 
 

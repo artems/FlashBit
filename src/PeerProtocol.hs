@@ -1,4 +1,4 @@
-module Protocol.Peer
+module PeerProtocol
     ( Message(..)
     , Handshake(..)
     , messageSize
@@ -29,7 +29,8 @@ import Data.Word
 
 import Prelude hiding (length)
 
-import Protocol hiding (Piece)
+import Peer
+import Piece hiding (Piece)
 
 
 data Message

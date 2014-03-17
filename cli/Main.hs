@@ -19,7 +19,6 @@ import System.Log.Formatter
 import System.Log.Handler (setFormatter)
 import System.Log.Handler.Simple
 
-import Protocol
 import Torrent (mkPeerId)
 import Version (version)
 

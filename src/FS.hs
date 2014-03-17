@@ -25,8 +25,9 @@ import BCode (BCode)
 import qualified BCode as BCode
 import qualified BCodeTorrent as BCode
 import Digest (digest)
-import Protocol
 import Torrent
+import Peer
+import Piece
 
 
 newtype TorrentFile = TorrentFile [(Handle, Integer)]  -- ^ [(file handle, file length)]
