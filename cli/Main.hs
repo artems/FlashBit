@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main
     ( main
     ) where
@@ -6,6 +7,7 @@ module Main
 import Data.List (find)
 
 import Control.Monad (forM_)
+import Control.Exception
 import Control.Concurrent
 import Control.Concurrent.STM
 
@@ -101,8 +103,43 @@ download opts files = do
     peerId <- newStdGen >>= (return . mkPeerId)
     debugM "Main" $ "Присвоен peer_id: " ++ peerId
 
+    stopM <- newEmptyMVar
+
+    let stop = \e -> tryPutMVar stopM e >> return ()
+
+    let runAction = \io -> forkFinally io stop
+        forkGroup = mapM runAction
+        waitGroup = \_ -> takeMVar stopM
+        shutdownGroup = mapM_ killThread
+        bracketGroup group =
+            bracket (forkGroup group)
+                    (shutdownGroup)
+                    (waitGroup)
+                `catch` (return . Left)
+
+    let runStatus = do
+            debugM "Status" "start"
+            threadDelay $ 5000 * 1000
+            error "Somthing wrong"
+
+    let oneForOne = [runStatus]
+
+    result <- bracketGroup oneForOne
+
+    case result of
+        Left (e :: SomeException) ->
+            putStrLn $ show e
+        Right _ -> return ()
+
+    -- Console.start waitC statusC
+    -- TorrentManager.start watchC statusC stv chokeC pid pmC
+    -- setupStatus flags statusC stv
+    -- PeerMgr.start pmC pid chokeC rtv
+    -- ChokeMgr.start chokeC rtv 100 -- 100 is upload rate in KB
+    -- Listen.start defaultPort pmC
+
     debugM "Main" "Завершаем работу"
-    threadDelay $ 1000 * 1000
+    threadDelay $ 500 * 1000
     return ()
 
 

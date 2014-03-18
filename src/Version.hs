@@ -7,4 +7,4 @@ version :: String
 version = "0.1.0.0"
 
 protoVersion :: String
-protoVersion = "0l00"
+protoVersion = "0100"
