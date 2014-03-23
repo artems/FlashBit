@@ -41,6 +41,14 @@ library
     ProcessGroup
     Version
 
+    Process
+    Process.Console
+    Process.TorrentManager
+    Process.Status
+    Process.PeerManager
+    Process.ChokeManager
+    Process.Listen
+
   build-depends:
     base == 4.*,
     mtl == 2.1.*,

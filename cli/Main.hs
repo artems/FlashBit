@@ -21,9 +21,17 @@ import System.Log.Formatter
 import System.Log.Handler (setFormatter)
 import System.Log.Handler.Simple
 
-import Torrent (mkPeerId)
+import Torrent (mkPeerId, defaultPort)
 import Version (version)
 import ProcessGroup
+
+
+import Process.Status
+import Process.Listen
+import Process.Console
+import Process.PeerManager
+import Process.ChokeManager
+import Process.TorrentManager
 
 
 main :: IO ()
@@ -104,21 +112,25 @@ download opts files = do
     peerId <- newStdGen >>= (return . mkPeerId)
     debugM "Main" $ "Присвоен peer_id: " ++ peerId
 
-    let oneForOne = []
+    rateV      <- newTVarIO []
+    statusV    <- newTVarIO []
+    peerMChan  <- newTChanIO
+    chokeMChan <- newTChanIO
+    statusChan <- newTChanIO
+    let oneForOne =
+            [ runStatus statusV statusChan
+            , runConsole statusChan
+            , runPeerManager peerId rateV peerMChan chokeMChan
+            , runChokeManager rateV chokeMChan
+            , runTorrentManager peerId statusV statusChan peerMChan chokeMChan
+            , runListen defaultPort peerMChan
+            ]
 
     result <- bracketGroup oneForOne
-
     case result of
         Left (e :: SomeException) ->
-            putStrLn $ show e
-        Right _ -> return ()
-
-    -- Console.start waitC statusC
-    -- TorrentManager.start watchC statusC stv chokeC pid pmC
-    -- setupStatus flags statusC stv
-    -- PeerMgr.start pmC pid chokeC rtv
-    -- ChokeMgr.start chokeC rtv 100 -- 100 is upload rate in KB
-    -- Listen.start defaultPort pmC
+            print e
+        _ -> return ()
 
     debugM "Main" "Завершаем работу"
     threadDelay $ 500 * 1000

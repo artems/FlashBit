@@ -32,8 +32,8 @@ bracketGroup :: [IO ()] -> IO (Either SomeException ())
 bracketGroup []    = return . Right $ ()
 bracketGroup group = do
     stopM  <- newEmptyMVar
-    result <-
-        bracket (forkGroup stopM group)
+    result <- bracket
+            (forkGroup stopM group)
             (shutdownGroup)
             (waitAny stopM)
         `catch`
