@@ -1,6 +1,7 @@
 module Process.Status
     ( runStatus
     , StatusMessage(..)
+    , StatusState(..)
     , UpDownStat(..)
     ) where
 

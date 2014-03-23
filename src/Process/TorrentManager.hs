@@ -87,7 +87,7 @@ startTorrent torrentFile = do
                 liftIO . atomically $ writeTChan statusChan $
                     ExistsTorrent (_torrentInfoHash torrent) existsV
                 exists <- liftIO . atomically $ takeTMVar existsV
-                unless (exists) $ startTorrent' bc torrent
+                unless exists $ startTorrent' bc torrent
             Nothing ->
                 parseFailure
         Left msg ->
@@ -111,7 +111,7 @@ startTorrent' bc torrent = do
 
     (target, pieceArray, pieceHaveMap) <- liftIO $ openAndCheckFile bc
     let left = bytesLeft pieceArray pieceHaveMap
-        infoHash = _torrentInfoHash torrent
+        infohash = _torrentInfoHash torrent
 
     -- pieceDB <- PieceManager.createPieceDB pieceHaveMap pieceArray
     fsChan      <- liftIO newTChanIO
@@ -119,8 +119,8 @@ startTorrent' bc torrent = do
     trackerChan <- liftIO newTChanIO
     let allForOne = []
             -- [ runFileAgent target pieceArray fsChan
-            -- , runPieceManager pieceDB infoHash pieceMChan fsChan statusChan chokeChan
-            -- , runTracker peerId infoHash torrent defaultPort trackerChan statusChan peerMChan
+            -- , runPieceManager infoHash pieceArray pieceHaveMap pieceMChan fsChan statusChan chokeChan
+            -- , runTracker peerId infohash torrent defaultPort trackerChan statusChan peerMChan
             -- ]
     -- liftIO . atomically $ do
     --    writeTChan trackerChan $ Tracker.Start

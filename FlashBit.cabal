@@ -52,6 +52,7 @@ library
     Process.PeerManager
     Process.ChokeManager
     Process.Listen
+    Process.Tracker
 
   build-depends:
     base == 4.*,
