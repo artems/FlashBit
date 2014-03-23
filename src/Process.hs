@@ -10,15 +10,21 @@ module Process
     , runProcess
     , execProcess
     , evalProcess
-    , wrapProcess
     , stopProcess
+    , wrapProcess
+    , logP
+    , infoP
+    , debugP
+    , errorP
+    , warningP
+    , criticalP
     ) where
 
 import Control.Concurrent
 
 import Control.Exception
 import Control.Monad.Reader
-import Control.Monad.State.Strict hiding (state)
+import Control.Monad.State.Strict
 import Data.Typeable
 
 import System.Log.Logger
@@ -35,21 +41,21 @@ data StopProcessException = StopProcessException
 instance Exception StopProcessException
 
 
-runProcess :: conf -> state -> Process conf state a -> IO (a, state)
-runProcess conf state (Process proc) = runStateT (runReaderT proc conf) state
+runProcess :: pconf -> pstate -> Process pconf pstate a -> IO (a, pstate)
+runProcess pconf pstate (Process proc) = runStateT (runReaderT proc pconf) pstate
 
 execProcess :: conf -> state -> Process conf state a -> IO state
-execProcess conf state proc = runProcess conf state proc >>= (\(_, s) -> return s)
+execProcess pconf pstate proc = runProcess pconf pstate proc >>= (\(_, s) -> return s)
 
 evalProcess :: conf -> state -> Process conf state a -> IO a
-evalProcess conf state proc = runProcess conf state proc >>= (\(a, _) -> return a)
+evalProcess pconf pstate proc = runProcess pconf pstate proc >>= (\(a, _) -> return a)
 
-stopProcess :: Process conf state a
+stopProcess :: Process pconf pstate a
 stopProcess = liftIO . throwIO $ StopProcessException
 
-wrapProcess :: (ProcessName conf) => conf -> state -> Process conf state a -> IO ()
-wrapProcess conf state proc = do
-    let name = processName conf
+wrapProcess :: (ProcessName pconf) => pconf -> pstate -> Process pconf pstate a -> IO ()
+wrapProcess pconf pstate proc = do
+    let name = processName pconf
     bracket_
         (debugM name "Старт")
         (debugM name "Выход")
@@ -60,30 +66,30 @@ wrapProcess conf state proc = do
             ]
         )
   where
-    action = runProcess conf state proc >> return ()
+    action = runProcess pconf pstate proc >> return ()
 
 
-class ProcessName conf where
-    processName :: conf -> String
+class ProcessName pconf where
+    processName :: pconf -> String
 
-logP :: (ProcessName conf) => Priority -> String -> Process conf state ()
+logP :: (ProcessName pconf) => Priority -> String -> Process pconf pstate ()
 logP priority message = do
     name <- asks processName
     liftIO $ logM name priority message
 
-infoP :: (ProcessName conf) => String -> Process conf state ()
+infoP :: (ProcessName pconf) => String -> Process pconf pstate ()
 infoP = logP INFO
 
-debugP :: (ProcessName conf) => String -> Process conf state ()
+debugP :: (ProcessName pconf) => String -> Process pconf pstate ()
 debugP = logP DEBUG
 
-errorP :: (ProcessName conf) => String -> Process conf state ()
+errorP :: (ProcessName pconf) => String -> Process pconf pstate ()
 errorP = logP ERROR
 
-warningP :: (ProcessName conf) => String -> Process conf state ()
+warningP :: (ProcessName pconf) => String -> Process pconf pstate ()
 warningP = logP WARNING
 
-criticalP :: (ProcessName conf) => String -> Process conf state ()
+criticalP :: (ProcessName pconf) => String -> Process pconf pstate ()
 criticalP = logP CRITICAL
 
 

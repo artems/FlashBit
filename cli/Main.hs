@@ -22,7 +22,7 @@ import System.Log.Handler (setFormatter)
 import System.Log.Handler.Simple
 
 import Torrent (mkPeerId, defaultPort)
-import Version (version)
+import Version (version, protoVersion)
 import ProcessGroup
 
 
@@ -109,7 +109,7 @@ download opts files = do
 
     debugM "Main" "Инициализация"
 
-    peerId <- newStdGen >>= (return . mkPeerId)
+    peerId <- newStdGen >>= (return . mkPeerId protoVersion)
     debugM "Main" $ "Присвоен peer_id: " ++ peerId
 
     rateV      <- newTVarIO []

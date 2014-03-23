@@ -1,4 +1,4 @@
-module BCodeTracker
+module Torrent.BCode.TrackerResponse
     ( trackerPeers
     , trackerError
     , trackerWarning
@@ -8,12 +8,12 @@ module BCodeTracker
     , trackerIncomplete
     ) where
 
+
+import Data.Maybe (fromMaybe)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 
-import Data.Maybe (fromMaybe)
-
-import BCode
+import Torrent.BCode.BCode
 
 
 trackerPeers :: BCode -> Maybe (ByteString, ByteString)
@@ -39,4 +39,5 @@ trackerComplete = searchInt "complete"
 
 trackerIncomplete :: BCode -> Maybe Integer
 trackerIncomplete = searchInt "incomplete"
+
 

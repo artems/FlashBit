@@ -1,4 +1,4 @@
-module BCodeTorrent
+module Torrent.BCode.TorrentFile
     ( comment
     , announce
     , creationDate
@@ -12,6 +12,7 @@ module BCodeTorrent
     , infoPieceLength
     ) where
 
+
 import Control.Applicative ((<|>))
 import Control.Monad (forM)
 
@@ -19,8 +20,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 
-import BCode
-import Digest (digest)
+import Torrent.BCode.BCode
 
 
 comment :: BCode -> Maybe ByteString
@@ -48,8 +48,8 @@ infoName bc = do
     (BStr name) <- search [BCodePStr "info", BCodePStr "name"] bc
     return name
 
-infoHash :: BCode -> Maybe ByteString
-infoHash bc = do
+infoHash :: (ByteString -> ByteString) -> BCode -> Maybe ByteString
+infoHash digest bc = do
     info <- search [BCodePStr "info"] bc
     return . digest . encode $ info
 

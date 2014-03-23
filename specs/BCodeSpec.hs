@@ -1,6 +1,6 @@
 module BCodeSpec (spec) where
 
-import BCode
+import Torrent.BCode
 
 import Test.Hspec
 import qualified Data.Map as M

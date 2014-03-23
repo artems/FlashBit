@@ -15,7 +15,7 @@ import Data.List (foldl')
 import Data.PSQueue (PSQ, Binding((:->)))
 import qualified Data.PSQueue as PSQ
 
-import Piece (PieceNum)
+import Torrent (PieceNum)
 
 
 newtype PieceHistogram = PieceHistogram { unPS :: PSQ PieceNum Int }

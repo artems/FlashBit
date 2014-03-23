@@ -1,4 +1,4 @@
-module BCode
+module Torrent.BCode.BCode
     ( BCode(..)
     , BCodePath(..)
     , encode

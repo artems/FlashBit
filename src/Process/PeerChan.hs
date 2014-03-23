@@ -4,12 +4,12 @@ module Process.PeerChan
     ) where
 
 
-import Piece
-import qualified PeerProtocol as PP
+import Torrent
+import qualified Torrent.Message as PM
 
 
 data PeerHandlerMessage
-    = FromPeer PP.Message
+    = FromPeer PM.Message
     | FromSender Int -- Always UpRate events
     | FromChokeManager PeerChokeMessage
     | PeerHandlerTick

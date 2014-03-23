@@ -18,7 +18,7 @@ import Data.Array.IO
 import qualified Data.List as L
 import Control.Monad.Trans (MonadIO, liftIO)
 
-import Piece (PieceNum)
+import Torrent (PieceNum)
 
 
 newtype PieceSet = PieceSet { unPS :: IOUArray Integer Bool }

@@ -8,8 +8,6 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.Trans (liftIO)
 
-import Peer
-import Piece
 import Torrent
 import Process
 import qualified Process.PeerChan as PeerChan

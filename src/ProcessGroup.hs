@@ -2,7 +2,6 @@ module ProcessGroup
     ( bracketGroup
     ) where
 
-
 import Control.Concurrent
 import Control.Exception
 
@@ -11,7 +10,7 @@ runAction :: MVar (Either SomeException ()) -> IO () -> IO ThreadId
 runAction stopM action = forkFinally action (stopAction stopM)
 
 stopAction :: MVar (Either SomeException ()) -> Either SomeException () -> IO ()
-stopAction stopM exception = putMVar stopM exception >> return ()
+stopAction stopM exception = putMVar stopM exception
 
 forkGroup :: MVar (Either SomeException ()) -> [IO ()] -> IO [ThreadId]
 forkGroup stopM = mapM (runAction stopM)

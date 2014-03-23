@@ -8,7 +8,7 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.Trans (liftIO)
 
-import Peer
+import Torrent
 
 import Process
 import Process.ChokeManager as ChokeManager

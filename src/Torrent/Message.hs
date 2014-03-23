@@ -1,4 +1,4 @@
-module PeerProtocol
+module Torrent.Message
     ( Message(..)
     , Handshake(..)
     , messageSize
@@ -27,11 +27,9 @@ import qualified Data.ByteString.Char8 as B8
 
 import Data.Word
 
-import Prelude hiding (length)
-
-import Peer
-import Piece hiding (Piece)
-
+import Torrent.Peer
+import Torrent.Piece (PieceNum, PieceBlock(..), PieceBlockOffset)
+import Torrent.Torrent
 
 data Message
     = KeepAlive

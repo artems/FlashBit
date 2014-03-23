@@ -37,8 +37,8 @@ runConsole statusChan = do
 
 process :: Process PConf PState ()
 process = do
-    line <- liftIO getLine
-    receive $ getCommand line
+    message <- getCommand `fmap` liftIO getLine
+    receive message
     process
   where
     getCommand line = case line of
@@ -58,7 +58,7 @@ receive command = do
         Show -> do
             statsV <- liftIO newEmptyTMVarIO
             liftIO . atomically $ writeTChan statusChan $
-                RequestAllTorrents statsV
+                RequestStatistic statsV
             stats  <- liftIO . atomically $ takeTMVar statsV
             liftIO . putStrLn $ show stats
         Help ->

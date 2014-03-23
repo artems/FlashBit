@@ -13,8 +13,6 @@ import Control.Monad.Reader (asks)
 
 import qualified Data.Map as M
 
-import Peer
-import Piece
 import Torrent
 
 import Timer
@@ -24,21 +22,21 @@ import Process
 data StatusMessage
     = TrackerStat
         { trackerInfoHash   :: InfoHash
-        , trackerIncomplete :: Maybe Integer
         , trackerComplete   :: Maybe Integer
+        , trackerIncomplete :: Maybe Integer
         }
     | CompletedPiece InfoHash Integer
     -- | InsertTorrent InfoHash Integer TrackerChannel
     | RemoveTorrent InfoHash
     | TorrentCompleted InfoHash
     | RequestStatus InfoHash (TMVar StatusState)
-    | RequestAllTorrents (TMVar [(InfoHash, StatusState)])
+    | RequestStatistic (TMVar [(InfoHash, StatusState)])
 
 
 data UpDownStat = UpDownStat
-    { _udInfoHash   :: InfoHash
-    , _udUploaded   :: Integer
-    , _udDownloaded :: Integer
+    { _statInfoHash   :: InfoHash
+    , _statUploaded   :: Integer
+    , _statDownloaded :: Integer
     }
 
 
@@ -46,7 +44,6 @@ data PConf = PConf
     { _statusChan :: TChan StatusMessage
     , _statusV    :: TVar [UpDownStat]
     }
-
 
 instance ProcessName PConf where
     processName _ = "Status"
@@ -56,8 +53,8 @@ data StatusState = StatusState
     { _sUploaded :: Integer
     , _sDownloaded :: Integer
     , _sLeft :: Integer
-    , _sIncomplete :: Maybe Integer
     , _sComplete :: Maybe Integer
+    , _sIncomplete :: Maybe Integer
     , _sState :: TorrentState
     -- , _sTrackerChan :: TrackerChannel
     }
@@ -66,7 +63,7 @@ type PState = M.Map InfoHash StatusState
 
 
 instance Show StatusState where
-    show (StatusState up down left incomplete complete state) = concat
+    show (StatusState up down left complete incomplete state) = concat
         [ "{ uploaded:   " ++ show up         ++ "\n"
         , "  downloaded: " ++ show down       ++ "\n"
         , "  left:       " ++ show left       ++ "\n"
@@ -100,8 +97,8 @@ wait = do
 receive :: StatusMessage -> Process PConf PState ()
 receive message =
     case message of
-        TrackerStat infohash incomplete complete -> do
-            adjust infohash $ \st -> st { _sIncomplete = incomplete, _sComplete = complete }
+        TrackerStat infohash complete incomplete -> do
+            adjust infohash $ \st -> st { _sComplete = complete, _sIncomplete = incomplete }
 
         CompletedPiece infohash bytes -> do
             adjust infohash $ \st -> st { _sLeft = (_sLeft st) - bytes }
@@ -112,21 +109,21 @@ receive message =
         RemoveTorrent infohash ->
             modify $ M.delete infohash
 
-        RequestStatus infohash statV -> do
+        RequestStatus infohash statusV -> do
             m <- get
             case M.lookup infohash m of
-                Just st -> liftIO . atomically $ putTMVar statV st
-                Nothing -> fail "unknown info_hash"
+                Just st -> liftIO . atomically $ putTMVar statusV st
+                Nothing -> fail "unknown info_hash " ++ show infohash
 
-        RequestAllTorrents statsV -> do
+        RequestStatistic statsV -> do
             m <- get
             liftIO . atomically $ putTMVar statsV $ M.toList m
 
         TorrentCompleted infohash -> do
-            m <- get
+            m  <- get
             st <- case M.lookup infohash m of
                 Just st -> return st
-                Nothing -> fail $ "unknown torrent " ++ show infohash
+                Nothing -> fail $ "unknown info_hash " ++ show infohash
             -- liftIO . atomically $ writeTChan (_sTrackerChan st) Complete
             modify $ M.insert infohash $ st { _sState = Seeding }
 

@@ -24,24 +24,28 @@ library
   hs-source-dirs:   src
 
   exposed-modules:
-    Peer
-    Piece
+    Torrent
+    Torrent.Peer
+    Torrent.Piece
+    Torrent.Torrent
+    Torrent.Message
+    Torrent.BCode
+    Torrent.BCode.BCode
+    Torrent.BCode.TorrentFile
+    Torrent.BCode.TrackerResponse
+
     Data.PieceSet
     Data.PieceHistogram
-    Rate
-    BCode
-    Torrent
+
     FS
-    BCodeTorrent
-    BCodeTracker
-    PeerProtocol
+    Rate
     Digest
     Timer
     URI
-    ProcessGroup
     Version
 
     Process
+    ProcessGroup
     Process.Console
     Process.TorrentManager
     Process.Status

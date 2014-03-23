@@ -7,7 +7,8 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.Trans (liftIO)
 
-import Peer
+import Torrent
+
 import Process
 import Process.Status
 import Process.PeerManager

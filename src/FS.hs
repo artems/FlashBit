@@ -21,13 +21,10 @@ import System.IO (Handle, SeekMode(AbsoluteSeek), IOMode(ReadWriteMode), hSeek, 
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (joinPath)
 
-import BCode (BCode)
-import qualified BCode as BCode
-import qualified BCodeTorrent as BCode
 import Digest (digest)
+import Torrent.BCode (BCode)
+import qualified Torrent.BCode as BCode
 import Torrent
-import Peer
-import Piece
 
 
 newtype TorrentFile = TorrentFile [(Handle, Integer)]  -- ^ [(file handle, file length)]
@@ -58,8 +55,8 @@ readBlock files pnum block pieces = do
     B.concat `fmap` forM fileMap readFile
   where
     piece = pieces ! pnum
-    offset = pieceOffset piece + blockOffset block
-    fileMap = projectFile files offset (blockSize block)
+    offset = _pieceOffset piece + _blockOffset block
+    fileMap = projectFile files offset (_blockSize block)
     readFile (handle, offset', size) = do
         hSeek handle AbsoluteSeek offset'
         B.hGet handle (fromInteger size)
@@ -71,10 +68,10 @@ writeBlock files pnum block pieces bs = do
     foldM_ writeFile bs fileMap
   where
     piece = pieces ! pnum
-    offset = pieceOffset piece + blockOffset block
-    length' = fromIntegral (B.length bs)
-    fileMap = projectFile files offset length'
-    lengthCheck = length' /= blockSize block
+    offset = _pieceOffset piece + _blockOffset block
+    length = fromIntegral (B.length bs)
+    fileMap = projectFile files offset length
+    lengthCheck = length /= _blockSize block
     writeFile acc (handle, offset', size) = do
         let (bs', rest) = B.splitAt (fromInteger size) acc
         hSeek handle AbsoluteSeek offset'
@@ -86,9 +83,9 @@ writeBlock files pnum block pieces bs = do
 checkPiece :: TorrentFile -> Piece -> IO Bool
 checkPiece files piece = do
     bs <- B.concat `fmap` forM fileMap readFile
-    return (pieceChecksum piece == digest bs)
+    return (_pieceChecksum piece == digest bs)
   where
-    fileMap = projectFile files (pieceOffset piece) (pieceLength piece)
+    fileMap = projectFile files (_pieceOffset piece) (_pieceLength piece)
     readFile (handle, offset, size) = do
         hSeek handle AbsoluteSeek offset
         B.hGet handle (fromInteger size)
