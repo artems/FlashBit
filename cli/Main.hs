@@ -23,6 +23,7 @@ import System.Log.Handler.Simple
 
 import Torrent (mkPeerId)
 import Version (version)
+import ProcessGroup
 
 
 main :: IO ()
@@ -103,26 +104,7 @@ download opts files = do
     peerId <- newStdGen >>= (return . mkPeerId)
     debugM "Main" $ "Присвоен peer_id: " ++ peerId
 
-    stopM <- newEmptyMVar
-
-    let stop = \e -> tryPutMVar stopM e >> return ()
-
-    let runAction = \io -> forkFinally io stop
-        forkGroup = mapM runAction
-        waitGroup = \_ -> takeMVar stopM
-        shutdownGroup = mapM_ killThread
-        bracketGroup group =
-            bracket (forkGroup group)
-                    (shutdownGroup)
-                    (waitGroup)
-                `catch` (return . Left)
-
-    let runStatus = do
-            debugM "Status" "start"
-            threadDelay $ 5000 * 1000
-            error "Somthing wrong"
-
-    let oneForOne = [runStatus]
+    let oneForOne = []
 
     result <- bracketGroup oneForOne
 
