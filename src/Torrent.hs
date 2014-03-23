@@ -3,9 +3,9 @@ module Torrent
     , TorrentState(..)
     , defaultPort
     , defaultBlockSize
-    , bytesLeft
     , mkPeerId
     , mkTorrent
+    , bytesLeft
     ) where
 
 
@@ -31,6 +31,7 @@ data Torrent = Torrent
     , torrentAnnounceURL :: [[B.ByteString]]
     } deriving (Show)
 
+
 data TorrentState
     = Seeding
     | Leeching
@@ -43,15 +44,6 @@ defaultPort = 1579
 
 defaultBlockSize :: PieceBlockSize
 defaultBlockSize = 16384 -- bytes
-
-
-bytesLeft :: PieceArray -> PieceHaveMap -> Integer
-bytesLeft pieces haveMap = foldl' f 0 (assocs pieces)
-  where
-    f acc (pieceNum, piece) =
-        case M.lookup pieceNum haveMap of
-            Just False -> (pieceLength piece) + acc
-            _          -> acc
 
 
 mkPeerId :: StdGen -> PeerId
@@ -74,5 +66,13 @@ mkTorrent bc = do
         , torrentAnnounceURL = announceURL
         }
 
+
+bytesLeft :: PieceArray -> PieceHaveMap -> Integer
+bytesLeft pieces haveMap = foldl' f 0 (assocs pieces)
+  where
+    f acc (pieceNum, piece) =
+        case M.lookup pieceNum haveMap of
+            Just False -> (pieceLength piece) + acc
+            _          -> acc
 
 

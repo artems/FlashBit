@@ -121,8 +121,8 @@ openTorrent filepath = do
 openAndCheckFile :: BCode -> IO (TorrentFile, PieceArray, PieceHaveMap)
 openAndCheckFile bc = do
     targets <- TorrentFile `fmap` forM files openFile
-    pieceDoneMap <- checkTorrent targets pieceArray
-    return (targets, pieceArray, pieceDoneMap)
+    pieceHaveMap <- checkTorrent targets pieceArray
+    return (targets, pieceArray, pieceHaveMap)
   where
     Just files = BCode.infoFiles bc
     Just pieceArray = mkPieceArray bc
@@ -132,4 +132,5 @@ openAndCheckFile bc = do
         when (dir /= "") $ createDirectoryIfMissing True dir
         handle <- openBinaryFile filepath ReadWriteMode
         return (handle, length')
+
 
