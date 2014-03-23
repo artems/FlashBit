@@ -112,21 +112,26 @@ download opts files = do
     peerId <- newStdGen >>= (return . mkPeerId protoVersion)
     debugM "Main" $ "Присвоен peer_id: " ++ peerId
 
-    rateV      <- newTVarIO []
-    statusV    <- newTVarIO []
-    peerMChan  <- newTChanIO
-    chokeMChan <- newTChanIO
-    statusChan <- newTChanIO
-    let oneForOne =
+    rateV   <- newTVarIO []
+    statusV <- newTVarIO []
+    peerMChan    <- newTChanIO
+    chokeMChan   <- newTChanIO
+    statusChan   <- newTChanIO
+    torrentMChan <- newTChanIO
+
+    forM_ files (atomically . writeTChan torrentMChan . AddTorrent)
+
+    let allForOne =
             [ runStatus statusV statusChan
             , runConsole statusChan
             , runPeerManager peerId rateV peerMChan chokeMChan
             , runChokeManager rateV chokeMChan
-            , runTorrentManager peerId statusV statusChan peerMChan chokeMChan
+            , runTorrentManager peerId statusV torrentMChan statusChan peerMChan chokeMChan
             , runListen defaultPort peerMChan
             ]
 
-    result <- bracketGroup oneForOne
+    group <- initGroup
+    result <- runGroup group allForOne
     case result of
         Left (e :: SomeException) ->
             print e

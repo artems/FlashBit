@@ -7,9 +7,9 @@ module Process.PeerManager
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad.Trans (liftIO)
+import qualified Network.Socket as S
 
 import Torrent
-
 import Process
 import Process.ChokeManager as ChokeManager
 
@@ -23,7 +23,9 @@ instance ProcessName PConf where
 data PState = PState ()
 
 
-data PeerManagerMessage = PMM
+data PeerManagerMessage
+    = PMM
+    | NewConnection (S.Socket, S.SockAddr)
 
 
 runPeerManager :: PeerId -> TVar [a]

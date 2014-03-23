@@ -28,6 +28,7 @@ data StatusMessage
     | CompletedPiece InfoHash Integer
     -- | InsertTorrent InfoHash Integer TrackerChannel
     | RemoveTorrent InfoHash
+    | ExistsTorrent InfoHash (TMVar Bool)
     | TorrentCompleted InfoHash
     | RequestStatus InfoHash (TMVar StatusState)
     | RequestStatistic (TMVar [(InfoHash, StatusState)])
@@ -109,11 +110,15 @@ receive message =
         RemoveTorrent infohash ->
             modify $ M.delete infohash
 
+        ExistsTorrent infohash existsV -> do
+            m <- get
+            liftIO . atomically $ putTMVar existsV $ M.member infohash m
+
         RequestStatus infohash statusV -> do
             m <- get
             case M.lookup infohash m of
                 Just st -> liftIO . atomically $ putTMVar statusV st
-                Nothing -> fail "unknown info_hash " ++ show infohash
+                Nothing -> fail $ "unknown info_hash " ++ show infohash
 
         RequestStatistic statsV -> do
             m <- get

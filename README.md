@@ -3,12 +3,12 @@ FlashBit
 
 = TODO
 [ ] - FS.openAndCheckFile
-        не безопасный pattern-matching
+        небезопасный pattern-matching
 
-= MIGRATE
+= REFACTOR
 [x] Status.hs
+[x] Listen.hs
 [x] Console.hs
-[ ] Listen.hs
 [ ] PeerChan.hs
 [ ] PeerManager.hs
 [ ] ChokeManager.hs
