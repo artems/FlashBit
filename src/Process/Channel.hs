@@ -2,11 +2,14 @@ module Process.Channel
     ( StatusMessage(..)
     , StatusState(..)
     , TrackerMessage(..)
+    , PeerHandlerMessage(..)
+    , PeerChokeMessage(..)
     ) where
 
 import Control.Concurrent.STM
 
 import Torrent
+import Torrent.Message as TM
 
 
 data StatusMessage
@@ -41,4 +44,18 @@ data TrackerMessage
     | TrackerComplete       -- ^ Сообщить трекеру об окончании скачивания
     | TrackerTick Integer   -- ^ ?
 
+
+
+data PeerHandlerMessage
+    = FromPeer TM.Message
+    | FromSender Int -- Always UpRate events
+    | FromChokeManager PeerChokeMessage
+    | PeerHandlerTick
+
+
+data PeerChokeMessage
+    = ChokePeer
+    | UnchokePeer
+    | PieceCompleted PieceNum
+    | CancelBlock PieceNum PieceBlock
 

@@ -2,7 +2,6 @@ module Process.Tracker
     ( runTracker
     ) where
 
-
 import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
@@ -31,9 +30,9 @@ import Process.PeerManager
 
 
 data PConf = PConf
-    { _infoHash :: InfoHash
-    , _peerMChan :: TChan PeerManagerMessage
-    , _statusChan :: TChan StatusMessage
+    { _infoHash    :: InfoHash
+    , _peerMChan   :: TChan PeerManagerMessage
+    , _statusChan  :: TChan StatusMessage
     , _trackerChan :: TChan TrackerMessage
     }
 
@@ -42,12 +41,12 @@ instance ProcessName PConf where
 
 
 data PState = PState
-    { _peerId :: PeerId
-    , _torrent :: Torrent
-    , _announceList :: [[B.ByteString]]
+    { _peerId        :: PeerId
+    , _torrent       :: Torrent
+    , _announceList  :: [[B.ByteString]]
     , _trackerStatus :: TrackerEvent
-    , _localPort :: Word16
-    , _nextTick :: Integer
+    , _localPort     :: Word16
+    , _nextTick      :: Integer
     }
 
 

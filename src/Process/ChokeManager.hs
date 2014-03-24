@@ -10,7 +10,7 @@ import Control.Monad.Trans (liftIO)
 
 import Torrent
 import Process
-import qualified Process.PeerChan as PeerChan
+import Process.Channel
 
 
 data ChokeManagerMessage = CMM

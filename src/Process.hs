@@ -12,6 +12,7 @@ module Process
     , evalProcess
     , stopProcess
     , wrapProcess
+    , catchProcess
     , logP
     , infoP
     , debugP
@@ -55,18 +56,27 @@ stopProcess = liftIO . throwIO $ StopProcessException
 
 wrapProcess :: (ProcessName pconf) => pconf -> pstate -> Process pconf pstate a -> IO ()
 wrapProcess pconf pstate proc = do
+    catchProcess pconf pstate proc (\_ -> return ())
+
+catchProcess :: (ProcessName pconf)
+    => pconf -> pstate
+    -> Process pconf pstate a
+    -> (pconf -> IO ())
+    -> IO ()
+catchProcess pconf pstate proc terminate = do
     let name = processName pconf
     bracket_
         (debugM name "Старт")
         (debugM name "Выход")
-        (catches action
+        (catches (action `onException` terminate pconf)
             [ Handler  (\ThreadKilled -> debugM name $ "Остановлен")
             , Handler  (\StopProcessException -> debugM name $ "Завершение")
-            , Handler  (\(e :: SomeException) -> debugM name $ "Не обработано исключение: " ++ show e)
+            , Handler  (\(e :: SomeException) -> errorM name $ "Не обработано исключение: " ++ show e)
             ]
         )
   where
     action = runProcess pconf pstate proc >> return ()
+
 
 
 class ProcessName pconf where
