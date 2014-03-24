@@ -27,7 +27,7 @@ data StatusMessage
         , trackerIncomplete :: Maybe Integer
         }
     | CompletedPiece InfoHash Integer
-    -- | InsertTorrent InfoHash Integer TrackerChannel
+    | AddTorrent InfoHash Integer (TChan TrackerManager)
     | RemoveTorrent InfoHash
     | ExistsTorrent InfoHash (TMVar Bool)
     | TorrentCompleted InfoHash

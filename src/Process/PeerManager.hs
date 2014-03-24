@@ -11,6 +11,9 @@ import qualified Network.Socket as S
 
 import Torrent
 import Process
+import Process.Status
+import Process.FileAgent
+import Process.PieceManager as PieceManager
 import Process.ChokeManager as ChokeManager
 
 
@@ -26,6 +29,7 @@ data PState = PState ()
 data PeerManagerMessage
     = PMM
     | NewConnection (S.Socket, S.SockAddr)
+    | AddTorrent InfoHash (TVar [UpDownStat]) (TChan PieceManagerMessage) (TChan FileAgentMessage) PieceArray
 
 
 runPeerManager :: PeerId -> TVar [a]

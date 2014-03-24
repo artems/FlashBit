@@ -1,5 +1,6 @@
 module Process.Tracker
     ( runTracker
+    , TrackerMessage(..)
     ) where
 
 

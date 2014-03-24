@@ -53,6 +53,8 @@ library
     Process.ChokeManager
     Process.Listen
     Process.Tracker
+    Process.FileAgent
+    Process.PieceManager
 
   build-depends:
     base == 4.*,

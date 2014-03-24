@@ -15,8 +15,11 @@ import Digest (digest)
 import Torrent
 import Torrent.BCode (BCode)
 import Process
-import Process.Status
-import Process.PeerManager
+import Process.Status as Status
+import Process.Tracker
+import Process.FileAgent
+import Process.PeerManager as PeerManager
+import Process.PieceManager
 import Process.ChokeManager
 
 
@@ -113,19 +116,18 @@ startTorrent' bc torrent = do
     let left = bytesLeft pieceArray pieceHaveMap
         infohash = _torrentInfoHash torrent
 
-    -- pieceDB <- PieceManager.createPieceDB pieceHaveMap pieceArray
     fsChan      <- liftIO newTChanIO
     pieceMChan  <- liftIO newTChanIO
     trackerChan <- liftIO newTChanIO
-    let allForOne = []
-            -- [ runFileAgent target pieceArray fsChan
-            -- , runPieceManager infoHash pieceArray pieceHaveMap pieceMChan fsChan statusChan chokeChan
-            -- , runTracker peerId infohash torrent defaultPort trackerChan statusChan peerMChan
-            -- ]
-    -- liftIO . atomically $ do
-    --    writeTChan trackerChan $ Tracker.Start
-    --    writeTChan statusChan  $ Status.AddTorrent infoHash left trackerChan
-    --    writeTChan peerMChan   $ PeerManager.AddTorrent infoHash statV pieceMChan fsChan pieceArray
+    let allForOne =
+            [ runFileAgent target pieceArray fsChan
+            , runTracker peerId infohash torrent defaultPort trackerChan statusChan peerMChan
+            , runPieceManager infohash pieceArray pieceHaveMap pieceMChan fsChan statusChan chokeMChan
+            ]
+    liftIO . atomically $ do
+       writeTChan trackerChan $ TrackerStart
+       writeTChan statusChan  $ Status.AddTorrent infohash left trackerChan
+       writeTChan peerMChan   $ PeerManager.AddTorrent infohash pieceArray statV pieceMChan fsChan
 
     return ()
 
