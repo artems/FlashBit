@@ -46,6 +46,7 @@ library
 
     Process
     ProcessGroup
+    Process.Channel
     Process.Console
     Process.TorrentManager
     Process.Status

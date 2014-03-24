@@ -15,7 +15,8 @@ import Digest (digest)
 import Torrent
 import Torrent.BCode (BCode)
 import Process
-import Process.Status as Status
+import Process.Channel
+import Process.Status
 import Process.Tracker
 import Process.FileAgent
 import Process.PeerManager as PeerManager
@@ -24,8 +25,8 @@ import Process.ChokeManager
 
 
 data TorrentManagerMessage
-    = AddTorrent FilePath
-    | RemoveTorrent FilePath
+    = TorrentMAddTorrent FilePath
+    | TorrentMRemoveTorrent FilePath
     deriving (Show)
 
 
@@ -71,10 +72,10 @@ wait = do
 receive :: TorrentManagerMessage -> Process PConf PState ()
 receive message =
     case message of
-        Process.TorrentManager.AddTorrent torrentFile -> do
+        TorrentMAddTorrent torrentFile -> do
             debugP $ "Добавление торрента: " ++ torrentFile
             startTorrent torrentFile
-        Process.TorrentManager.RemoveTorrent _torrentFile -> do
+        TorrentMRemoveTorrent _torrentFile -> do
             errorP $ "Удаление торрента не реализованно"
             stopProcess
 
@@ -126,8 +127,8 @@ startTorrent' bc torrent = do
             ]
     liftIO . atomically $ do
        writeTChan trackerChan $ TrackerStart
-       writeTChan statusChan  $ Status.AddTorrent infohash left trackerChan
-       writeTChan peerMChan   $ PeerManager.AddTorrent infohash pieceArray statV pieceMChan fsChan
+       writeTChan statusChan  $ StatusAddTorrent infohash left trackerChan
+       writeTChan peerMChan   $ PeerMAddTorrent infohash statV pieceArray pieceMChan fsChan
 
     return ()
 

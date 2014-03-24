@@ -18,21 +18,7 @@ import Torrent
 
 import Timer
 import Process
-
-
-data StatusMessage
-    = TrackerStat
-        { trackerInfoHash   :: InfoHash
-        , trackerComplete   :: Maybe Integer
-        , trackerIncomplete :: Maybe Integer
-        }
-    | CompletedPiece InfoHash Integer
-    | AddTorrent InfoHash Integer (TChan TrackerManager)
-    | RemoveTorrent InfoHash
-    | ExistsTorrent InfoHash (TMVar Bool)
-    | TorrentCompleted InfoHash
-    | RequestStatus InfoHash (TMVar StatusState)
-    | RequestStatistic (TMVar [(InfoHash, StatusState)])
+import Process.Channel
 
 
 data UpDownStat = UpDownStat
@@ -51,21 +37,11 @@ instance ProcessName PConf where
     processName _ = "Status"
 
 
-data StatusState = StatusState
-    { _sUploaded :: Integer
-    , _sDownloaded :: Integer
-    , _sLeft :: Integer
-    , _sComplete :: Maybe Integer
-    , _sIncomplete :: Maybe Integer
-    , _sState :: TorrentState
-    -- , _sTrackerChan :: TrackerChannel
-    }
-
 type PState = M.Map InfoHash StatusState
 
 
 instance Show StatusState where
-    show (StatusState up down left complete incomplete state) = concat
+    show (StatusState up down left complete incomplete state _) = concat
         [ "{ uploaded:   " ++ show up         ++ "\n"
         , "  downloaded: " ++ show down       ++ "\n"
         , "  left:       " ++ show left       ++ "\n"
@@ -105,10 +81,10 @@ receive message =
         CompletedPiece infohash bytes -> do
             adjust infohash $ \st -> st { _sLeft = (_sLeft st) - bytes }
 
-        -- InsertTorrent infohash left trackerChan ->
-        --     modify $ M.insert infohash $ mkStatusState left trackerChan
+        StatusAddTorrent infohash left trackerChan ->
+            modify $ M.insert infohash $ mkStatusState left trackerChan
 
-        RemoveTorrent infohash ->
+        StatusRemoveTorrent infohash ->
             modify $ M.delete infohash
 
         ExistsTorrent infohash existsV -> do
@@ -130,7 +106,7 @@ receive message =
             st <- case M.lookup infohash m of
                 Just st -> return st
                 Nothing -> fail $ "unknown info_hash " ++ show infohash
-            -- liftIO . atomically $ writeTChan (_sTrackerChan st) Complete
+            liftIO . atomically $ writeTChan (_sTrackerChan st) TrackerComplete
             modify $ M.insert infohash $ st { _sState = Seeding }
 
 
@@ -139,18 +115,16 @@ adjust infohash f = do
     modify $ \st -> M.adjust f infohash st
 
 
--- mkStatusState :: Integer -> TrackerChannel -> StatusState
--- mkStatusState left trackerChan =
-mkStatusState :: Integer -> StatusState
-mkStatusState left =
-    StatusState
+mkStatusState :: Integer -> TChan TrackerMessage -> StatusState
+mkStatusState left trackerChan
+    = StatusState
     { _sUploaded = 0
     , _sDownloaded = 0
     , _sLeft = left
     , _sComplete = Nothing
     , _sIncomplete = Nothing
     , _sState = if left == 0 then Seeding else Leeching
-    -- , _sTrackerChan = trackerChan
+    , _sTrackerChan = trackerChan
     }
 
 

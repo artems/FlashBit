@@ -1,6 +1,5 @@
 module Process.Tracker
     ( runTracker
-    , TrackerMessage(..)
     ) where
 
 
@@ -27,15 +26,8 @@ import Torrent
 import Torrent.BCode (BCode)
 import qualified Torrent.BCode as BCode
 import Process
-import Process.Status
+import Process.Channel
 import Process.PeerManager
-
-
-data TrackerMessage
-    = TrackerStop           -- ^ Сообщить трекеру об остановки скачивания
-    | TrackerStart          -- ^ Сообщить трекеру о начале скачивания
-    | TrackerComplete       -- ^ Сообщить трекеру об окончании скачивания
-    | TrackerTick Integer   -- ^ ?
 
 
 data PConf = PConf

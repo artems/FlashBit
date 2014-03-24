@@ -29,7 +29,7 @@ data PState = PState ()
 data PeerManagerMessage
     = PMM
     | NewConnection (S.Socket, S.SockAddr)
-    | AddTorrent InfoHash (TVar [UpDownStat]) (TChan PieceManagerMessage) (TChan FileAgentMessage) PieceArray
+    | PeerMAddTorrent InfoHash (TVar [UpDownStat]) PieceArray (TChan PieceManagerMessage) (TChan FileAgentMessage)
 
 
 runPeerManager :: PeerId -> TVar [a]

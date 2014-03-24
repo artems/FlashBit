@@ -119,7 +119,7 @@ download opts files = do
     statusChan   <- newTChanIO
     torrentMChan <- newTChanIO
 
-    forM_ files (atomically . writeTChan torrentMChan . AddTorrent)
+    forM_ files (atomically . writeTChan torrentMChan . TorrentMAddTorrent)
 
     let allForOne =
             [ runStatus statusV statusChan
