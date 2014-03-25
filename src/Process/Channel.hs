@@ -4,8 +4,12 @@ module Process.Channel
     , TrackerMessage(..)
     , PeerHandlerMessage(..)
     , PeerChokeMessage(..)
+    , PeerEventMessage(..)
+    , PeerRate(..)
+    , RateTVar
     ) where
 
+import Control.Concurrent
 import Control.Concurrent.STM
 
 import Torrent
@@ -58,4 +62,21 @@ data PeerChokeMessage
     | UnchokePeer
     | PieceCompleted PieceNum
     | CancelBlock PieceNum PieceBlock
+
+data PeerEventMessage
+    = Connect InfoHash ThreadId (TChan PeerHandlerMessage)
+    | Disconnect ThreadId
+
+
+data PeerRate = PeerRate
+    { _peerUpRate     :: Double
+    , _peerDownRate   :: Double
+    , _peerInterested :: Bool
+    , _peerSeeding    :: Bool
+    , _peerSnubs      :: Bool
+    , _peerChokingUs  :: Bool
+    } deriving (Show)
+
+type RateTVar = TVar [(ThreadId, PeerRate)]
+
 
