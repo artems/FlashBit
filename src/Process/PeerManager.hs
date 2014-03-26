@@ -100,7 +100,7 @@ receive' :: PeerManagerMessage -> Process PConf PState ()
 receive' message =
     case message of
         NewPeers infohash peers -> do
-            debugP "Добавляем новых пиров в очередь"
+            debugP $ "Добавляем новых пиров в очередь " ++ show peers
             let peers' = map (\peer -> (infohash, peer)) peers
             modify $ \st -> st { _peerQueue = peers' ++ _peerQueue st }
 

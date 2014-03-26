@@ -18,9 +18,9 @@ import Torrent.Message as TM
 
 data StatusMessage
     = TrackerStat
-        { trackerInfoHash   :: InfoHash
-        , trackerComplete   :: Maybe Integer
-        , trackerIncomplete :: Maybe Integer
+        { _trackerInfoHash   :: InfoHash
+        , _trackerComplete   :: Maybe Integer
+        , _trackerIncomplete :: Maybe Integer
         }
     | StatusAddTorrent InfoHash Integer (TChan TrackerMessage)
     | StatusRemoveTorrent InfoHash

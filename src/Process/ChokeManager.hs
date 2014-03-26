@@ -59,7 +59,7 @@ data PState = PState
 
 
 chokeRound :: Int
-chokeRound = 10
+chokeRound = 30
 
 
 defaultOptimisticSlots :: Int

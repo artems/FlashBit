@@ -131,6 +131,16 @@ pokeTracker = do
             infoP $ "Response decode error: " ++ B8.unpack msg
             return (failTimerInterval, Nothing)
         Right rsp -> do
+            infohash   <- asks _infoHash
+            peerMChan  <- asks _peerMChan
+            statusChan <- asks _statusChan
+            let trackerStat = TrackerStat
+                    { _trackerInfoHash   = infohash
+                    , _trackerComplete   = _torrentComplete rsp
+                    , _trackerIncomplete = _torrentIncomplete rsp
+                    }
+            liftIO . atomically $ writeTChan peerMChan $ NewPeers infohash (_trackerPeers rsp)
+            liftIO . atomically $ writeTChan statusChan trackerStat
             eventTransition
             return (_timeoutInterval rsp, _timeoutMinInterval rsp)
   where
@@ -302,6 +312,7 @@ buildRequestParams torrentStatus = do
         , (B8.pack "left", B8.pack . show $ _sLeft torrentStatus)
         , (B8.pack "uploaded", B8.pack . show $ _sUploaded torrentStatus)
         , (B8.pack "downloaded", B8.pack . show $ _sDownloaded torrentStatus)
+        , (B8.pack "num", B8.pack "10")
         , (B8.pack "compact", B8.pack "1")
         ] ++ (event status)
   where
