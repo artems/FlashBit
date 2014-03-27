@@ -19,9 +19,9 @@ data PieceManagerMessage = PMM
 
 data PConf = PConf
     { _infoHash   :: InfoHash
+    , _pieceMChan :: TChan PieceManagerMessage
     , _fsChan     :: TChan FileAgentMessage
     , _statusChan :: TChan StatusMessage
-    , _pieceMChan :: TChan PieceManagerMessage
     , _chokeMChan :: TChan ChokeManagerMessage
     }
 
@@ -41,16 +41,15 @@ data PState = PState
     }
 
 
-
 runPieceManager :: InfoHash -> PieceArray -> PieceHaveMap
     -> TChan PieceManagerMessage
     -> TChan FileAgentMessage
     -> TChan StatusMessage
     -> TChan ChokeManagerMessage
     -> IO ()
-runPieceManager infohash pieceArray pieceHaveMap pieceMChan fsChan statusChan chokeChan = do
-    let pconf  = PConf ()
-        pstate = PState ()
+runPieceManager infohash pieceArray pieceHaveMap pieceMChan fsChan statusChan chokeMChan = do
+    let pconf  = PConf infohash pieceMChan fsChan statusChan chokeMChan
+        pstate = createPieceDB piecesHaveMap pieceArray
     wrapProcess pconf pstate process
 
 
@@ -107,93 +106,95 @@ instance Show PieceMgrMsg where
     show (PeerUnhave xs)       = "PeerUnhave " ++ show xs
 
 
-
-start :: PieceMgrChannel -> FSPChannel -> ChokeMgrChannel -> StatusChannel -> ST -> InfoHash
-      -> SupervisorChannel -> IO ThreadId
-start mgrC fspC chokeC statC db ih supC =
-    spawnP (CF mgrC fspC chokeC statC ih) db
-                    ({-# SCC "PieceMgr" #-} catchP eventLoop
-                        (defaultStopHandler supC))
-
-eventLoop :: Process CF ST ()
+eventLoop :: Process PConf PState ()
 eventLoop = do
     assertST
     rpcMessage
     drainSend
     eventLoop
 
-drainSend :: Process CF ST ()
-drainSend = {-# SCC "drainSend" #-} do
-    dl <- gets donePush
-    if (null dl)
+
+drainSend :: Process PConf PState ()
+drainSend = do
+    donePush <- gets _donePush
+    if (null donePush)
         then return ()
         else do
-          c <- asks chokeCh
-          liftIO . atomically $ writeTChan c (head dl)
-          s <- get
-          put $! s { donePush = tail (donePush s) }
+          chokeMChan <- asks _chokeMChan
+          liftIO . atomically $ writeTChan chokeMChan (head donePush)
+          modify $ \st -> st { _donePush = tail (_donePush st) }
 
-traceMsg :: PieceMgrMsg -> Process CF ST ()
-traceMsg m = {-# SCC "traceMsg" #-} do
-    tb <- gets traceBuffer
-    let !ntb = (trace $! show m) tb
-    db <- get
-    put $! db { traceBuffer = ntb }
 
-rpcMessage :: Process CF ST ()
-rpcMessage = do
-    ch <- asks pieceMgrCh
-    m <- {-# SCC "Channel_Read" #-} liftIO . atomically $ readTChan ch
-    traceMsg m
-    case m of
-      GrabBlocks n eligible c lastpn -> {-# SCC "GrabBlocks" #-}
-          do blocks <- grabBlocks n eligible lastpn
-             liftIO . atomically $ do putTMVar c blocks -- Is never supposed to block
-      StoreBlock pn blk d ->
-          storeBlock pn blk d
-      PutbackBlocks blks -> {-# SCC "PutbackBlocks" #-}
-          mapM_ putbackBlock blks
-      GetDone c -> {-# SCC "GetDone" #-} do
-         done <- doneKeys <$> gets pieces
-         liftIO . atomically $ do putTMVar c done -- Is never supposed to block either
-      PeerHave idxs c -> peerHave idxs c
-      PeerUnhave idxs -> peerUnhave idxs
+wait :: Process PConf PState PieceManagerMessage
+wait = do
+    pieceMChan <- asks _pieceMChan
+    liftIO . atomically $ readTChan pieceMChan
 
-doneKeys :: M.Map PieceNum PieceSt -> [PieceNum]
+
+receive :: PieceManagerMessage -> Process PConf PState ()
+receive message = do
+    case message of
+        GrabBlocks n eligible c lastpn -> do
+            blocks <- grabBlocks n eligible lastpn
+            liftIO . atomically $ putTMVar c blocks -- Is never supposed to block
+
+        StoreBlock pieceNum block d ->
+            storeBlock pieceNum block d
+
+        PutbackBlocks blocks ->
+            mapM_ putbackBlock blocks
+
+        GetDone c -> do
+            done <- doneKeys `fmap` gets pieces
+            liftIO . atomically $ do putTMVar c done -- Is never supposed to block either
+
+        PeerHave idxs c -> peerHave idxs c
+
+        PeerUnhave idxs -> peerUnhave idxs
+
+
+doneKeys :: M.Map PieceNum PieceState -> [PieceNum]
 doneKeys = M.keys . M.filter f
-  where f Done = True
-        f _    = False
+  where
+    f Done = True
+    f _    = False
 
-storeBlock :: PieceNum -> Block -> B.ByteString -> Process CF ST ()
-storeBlock pn blk d = {-# SCC "storeBlock" #-} do
-     writeFS
-     dld <- gets downloading
-     let !ndl = S.delete (pn, blk) dld
-     s <- get
-     put $! s { downloading = ndl }
-     endgameBroadcast pn blk
-     done <- updateProgress pn blk
-     when done (pieceDone pn)
-  where writeFS = {-# SCC "writeFS" #-} do
-                fch <- asks fspCh
-                liftIO . atomically $ writeTChan fch $ WriteBlock pn blk d
+
+storeBlock :: PieceNum -> PieceBlock -> B.ByteString -> Process PConf PState ()
+storeBlock pieceNum block bs = do
+    fsChan <- asks _fsChan
+    liftIO . atomically $ writeTChan fsChan $ WriteBlock pieceNum block bs
+    downloading <- gets _downloading
+    modify $ \st -> st { _downloading =  S.delete (piecenum, block) downloading }
+    endgameBroadcast pieceNum block
+    done <- updateProgress pieceNum block
+    when done $ pieceDone pieceNum
+
 
 pieceDone :: PieceNum -> Process CF ST ()
-pieceDone pn = {-# SCC "pieceDone" #-} do
-    assertPieceComplete pn
+pieceDone pieceNum = do
+    assertPieceComplete pieceNum
     debugP $ "Marking piece #" ++ show pn ++ " done"
-    pieceOk <- checkPiece pn
+    pieceOk <- checkPiece pieceNum
     case pieceOk of
-      Nothing ->
-             do fail "PieceMgrP: Piece Nonexisting!"
-      Just True -> do completePiece pn
-                      markDone pn
-                      checkFullCompletion
-                      l <- gets infoMap >>= (\pm -> return $! len . (pm !) $ pn)
-                      ih <- asks pMgrInfoHash
-                      c <- asks statusCh
-                      liftIO . atomically $ writeTChan c (CompletedPiece ih l)
-      Just False -> putbackPiece pn
+        Nothing -> do
+            errorP "Piece non-existing!"
+            stopProcess
+
+        Just True -> do
+            infohash   <- asks _infoHash
+            statusChan <- asks _statusChan
+            completePiece pieceNum
+            markDone pieceNum
+            checkFullCompletion
+            infoMap <- gets _infoMap
+            let len = _pieceLength $ infoMap ! pieceNum
+            liftIO . atomically $ writeTChan statusChan $
+                CompletedPiece infohash len
+
+        Just False ->
+            putbackPiece pieceNum
+
 
 peerHave :: [PieceNum] -> TMVar [PieceNum] -> Process CF ST ()
 peerHave idxs tmv = {-# SCC "peerHave" #-} do
@@ -215,6 +216,7 @@ peerUnhave :: [PieceNum] -> Process CF ST ()
 peerUnhave idxs = {-# SCC "peerUnhave" #-}
     modify (\db -> db { histogram = PendS.unhaves idxs (histogram db)})
 
+
 endgameBroadcast :: PieceNum -> Block -> Process CF ST ()
 endgameBroadcast pn blk = {-# SCC "endgameBroadCast" #-} do
     ih <- asks pMgrInfoHash
@@ -224,10 +226,12 @@ endgameBroadcast pn blk = {-# SCC "endgameBroadCast" #-} do
             let dp' = (BlockComplete ih pn blk) : dp
             dp' `deepseq` modify (\db -> db { donePush = dp' }))
 
+
 markDone :: PieceNum -> Process CF ST ()
 markDone pn = do
     ih <- asks pMgrInfoHash
     modify (\db -> db { donePush = (PieceDone ih pn) : donePush db })
+
 
 checkPiece :: PieceNum -> Process CF ST (Maybe Bool)
 checkPiece n = {-# SCC "checkPiece" #-} do
@@ -237,11 +241,13 @@ checkPiece n = {-# SCC "checkPiece" #-} do
         atomically $ writeTChan fch $ CheckPiece n v
         atomically $ takeTMVar v
 
+
 createPieceDb :: MonadIO m => PiecesDoneMap -> PieceMap -> m ST
 createPieceDb mmap pmap = do
     return $ ST [] (M.map f mmap) S.empty pmap False PendS.empty 0 (Tracer.new 50)
   where f False = Pending
         f True  = Done
+
 
 -- | The call @completePiece db pn@ will mark that the piece @pn@ is completed
 completePiece :: PieceNum -> PieceMgrProcess ()
