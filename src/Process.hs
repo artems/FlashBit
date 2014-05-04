@@ -69,9 +69,9 @@ catchProcess pconf pstate proc terminate = do
         (debugM name "Старт")
         (debugM name "Выход")
         (catches (action `onException` terminate pconf)
-            [ Handler  (\ThreadKilled -> debugM name $ "Остановлен")
-            , Handler  (\StopProcessException -> debugM name $ "Завершение")
-            , Handler  (\(e :: SomeException) -> errorM name $ "Не обработано исключение: " ++ show e)
+            [ Handler (\ThreadKilled -> debugM name $ "Остановлен")
+            , Handler (\StopProcessException -> debugM name $ "Завершение")
+            , Handler (\(e :: SomeException) -> errorM name $ "Не обработано исключение: " ++ show e)
             ]
         )
   where

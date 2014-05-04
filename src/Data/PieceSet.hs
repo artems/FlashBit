@@ -7,6 +7,8 @@ module Data.PieceSet
     , have
     , unhave
     , exists
+    , exists'
+    , freeze
     , toList
     , fromList
     ) where
@@ -14,7 +16,9 @@ module Data.PieceSet
 
 import Prelude hiding (all, null)
 
-import Data.Array.IO
+import Data.Array.IO hiding (freeze)
+import Data.Array.Unboxed (UArray, (!))
+import qualified Data.Array.IO as AIO
 import qualified Data.List as L
 import Control.Monad.Trans (MonadIO, liftIO)
 
@@ -49,6 +53,12 @@ unhave pieceNum (PieceSet ps) = liftIO $ writeArray ps pieceNum False
 
 exists :: MonadIO m => PieceNum -> PieceSet -> m Bool
 exists pieceNum (PieceSet ps) = liftIO $ readArray ps pieceNum
+
+freeze :: MonadIO m => PieceSet -> m (UArray Integer Bool)
+freeze (PieceSet ps) = liftIO $ AIO.freeze ps
+
+exists' :: PieceNum -> UArray Integer Bool -> Bool
+exists' pieceNum ps = ps ! pieceNum
 
 toList :: MonadIO m => PieceSet -> m [PieceNum]
 toList (PieceSet ps) = liftIO $ do

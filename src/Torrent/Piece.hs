@@ -32,7 +32,7 @@ type PieceSize = Integer
 data PieceBlock = PieceBlock
     { _blockSize   :: PieceBlockSize
     , _blockOffset :: PieceBlockOffset
-    } deriving (Eq, Show)
+    } deriving (Eq, Ord, Show)
 
 type PieceBlockSize = Integer
 

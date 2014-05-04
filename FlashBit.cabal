@@ -57,6 +57,11 @@ library
     Process.FileAgent
     Process.PieceManager
 
+    Process.Peer
+    Process.Peer.Sender
+    Process.Peer.Receiver
+    Process.Peer.Handler
+
   build-depends:
     base == 4.*,
     mtl == 2.1.*,
@@ -74,6 +79,7 @@ library
     filepath == 1.3.*,
     directory == 1.2.*,
     PSQueue == 1.1,
+    random-shuffle == 0.0.4,
     hslogger == 1.2.*
 
   default-language: Haskell2010
