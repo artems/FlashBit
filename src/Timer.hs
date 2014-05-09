@@ -15,6 +15,7 @@ type TimerId = ThreadId
 factor :: Int
 factor = 1000000
 
+
 maxTimeout :: Int
 maxTimeout = (maxBound :: Int) `div` factor
 

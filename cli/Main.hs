@@ -26,14 +26,6 @@ import Version (version, protoVersion)
 import ProcessGroup
 
 
-import Process.Status
-import Process.Listen
-import Process.Console
-import Process.PeerManager
-import Process.ChokeManager
-import Process.TorrentManager
-
-
 main :: IO ()
 main = do
     args <- getArgs
@@ -119,15 +111,10 @@ download opts files = do
     statusChan   <- newTChanIO
     torrentMChan <- newTChanIO
 
-    forM_ files (atomically . writeTChan torrentMChan . TorrentMAddTorrent)
+    -- forM_ files (atomically . writeTChan torrentMChan . TorrentMAddTorrent)
 
     let allForOne =
-            [ runStatus statusV statusChan
-            , runConsole statusChan
-            , runPeerManager peerId rateV peerMChan chokeMChan
-            , runChokeManager rateV chokeMChan
-            , runTorrentManager peerId statusV torrentMChan statusChan peerMChan chokeMChan
-            , runListen defaultPort peerMChan
+            [
             ]
 
     group <- initGroup

@@ -47,20 +47,9 @@ library
     Process
     ProcessGroup
     Process.Channel
-    Process.Console
-    Process.TorrentManager
-    Process.Status
-    Process.PeerManager
-    Process.ChokeManager
-    Process.Listen
-    Process.Tracker
-    Process.FileAgent
-    Process.PieceManager
 
-    Process.Peer
     Process.Peer.Sender
     Process.Peer.Receiver
-    Process.Peer.Handler
 
   build-depends:
     base == 4.*,

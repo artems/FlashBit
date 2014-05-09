@@ -20,19 +20,24 @@ runAction :: ProcessGroup -> IO () -> IO ThreadId
 runAction stopM action =
     forkFinally action (stopAction stopM)
 
+
 stopAction :: ProcessGroup -> Either SomeException () -> IO ()
 stopAction stopM exception =
     putMVar stopM (ChildDead exception)
 
+
 initGroup :: IO (ProcessGroup)
 initGroup = newEmptyMVar
+
 
 stopGroup :: ProcessGroup -> IO ()
 stopGroup stopM =
     tryPutMVar stopM Terminate >> return ()
 
+
 forkGroup :: ProcessGroup -> [IO ()] -> IO [ThreadId]
 forkGroup stopM = mapM (runAction stopM)
+
 
 waitAny :: ProcessGroup -> [ThreadId] -> IO (Either SomeException ())
 waitAny stopM _threads = do
@@ -40,6 +45,7 @@ waitAny stopM _threads = do
     case reason of
         Terminate   -> return $ Right ()
         ChildDead e -> return $ e
+
 
 waitAll :: ProcessGroup -> Int -> IO ()
 waitAll _     0     = return ()
@@ -49,10 +55,12 @@ waitAll stopM count = do
         Terminate   -> waitAll stopM count
         ChildDead _ -> waitAll stopM (count - 1)
 
+
 shutdownGroup :: ProcessGroup -> Int -> [ThreadId] -> IO ()
 shutdownGroup stopM count threads = do
     mapM_ killThread threads
     waitAll stopM count
+
 
 runGroup :: ProcessGroup -> [IO ()] -> IO (Either SomeException ())
 runGroup stopM []    = return . Right $ ()
