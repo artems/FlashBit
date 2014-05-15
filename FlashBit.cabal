@@ -48,8 +48,15 @@ library
     ProcessGroup
     Process.Channel
 
+    Process.Status
+    Process.FileAgent
+    Process.PieceManager
+
+    Process.Peer
     Process.Peer.Sender
+    Process.Peer.Handler
     Process.Peer.Receiver
+    Process.Peer.SenderQueue
 
   build-depends:
     base == 4.*,

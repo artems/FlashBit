@@ -4,7 +4,7 @@ module Process.Channel
     , TrackerMessage(..)
     , PeerHandlerMessage(..)
     , PeerChokeMessage(..)
-    , PeerEventMessage(..)
+    , PeerNetworkMessage(..)
     , PeerRate(..)
     , RateTVar
     ) where
@@ -17,64 +17,61 @@ import Torrent.Message as TM
 
 
 data StatusMessage
-    = TrackerStat
+    = StatusTrackerStat
         { _trackerInfoHash   :: InfoHash
         , _trackerComplete   :: Maybe Integer
         , _trackerIncomplete :: Maybe Integer
         }
     | StatusAddTorrent InfoHash Integer (TChan TrackerMessage)
     | StatusRemoveTorrent InfoHash
-    | ExistsTorrent InfoHash (TMVar Bool)
-    | TorrentCompleted InfoHash
-    | CompletedPiece InfoHash Integer
-    | RequestStatus InfoHash (TMVar StatusState)
-    | RequestStatistic (TMVar [(InfoHash, StatusState)])
+    | StatusExistsTorrent InfoHash (TMVar Bool)
+    | StatusCompletedPiece InfoHash Integer
+    | StatusTorrentCompleted InfoHash
+    | StatusRequestStatus InfoHash (TMVar StatusState)
+    | StatusRequestStatistic (TMVar [(InfoHash, StatusState)])
 
 
 data StatusState = StatusState
-    { _sUploaded        :: Integer
-    , _sDownloaded      :: Integer
-    , _sLeft            :: Integer
-    , _sComplete        :: Maybe Integer
-    , _sIncomplete      :: Maybe Integer
-    , _sState           :: TorrentState
-    , _sTrackerChan     :: TChan TrackerMessage
+    { _left              :: Integer
+    , _uploaded          :: Integer
+    , _downloaded        :: Integer
+    , _torrentComplete   :: Maybe Integer
+    , _torrentIncomplete :: Maybe Integer
+    , _torrentState      :: TorrentState
+    , _statusTrackerChan :: TChan TrackerMessage
     }
 
 
 data TrackerMessage
-    = TrackerStop           -- ^ Сообщить трекеру об остановки скачивания
-    | TrackerStart          -- ^ Сообщить трекеру о начале скачивания
-    | TrackerComplete       -- ^ Сообщить трекеру об окончании скачивания
-    | TrackerTick Integer   -- ^ ?
-
-
-
-data PeerHandlerMessage
-    = FromPeer TM.Message
-    | FromSender Int -- Always UpRate events
-    | FromChokeManager PeerChokeMessage
-    | PeerHandlerTick
+    = TrackerStop
+    | TrackerStart
+    | TrackerComplete
+    | TrackerTick Integer
 
 
 data PeerChokeMessage
     = ChokePeer
     | UnchokePeer
-    | PieceCompleted PieceNum
-    | CancelBlock PieceNum PieceBlock
+    | PieceComplete PieceNum
 
-data PeerEventMessage
+
+data PeerNetworkMessage
     = Connect InfoHash ThreadId (TChan PeerHandlerMessage)
     | Disconnect ThreadId
 
 
+data PeerHandlerMessage
+    = PeerHandlerFromPeer (Either TM.Handshake TM.Message) Integer -- download bytes
+    | PeerHandlerFromSender Integer -- upload bytes
+    | PeerHandlerFromChokeManager PeerChokeMessage
+    | PeerHandlerTick
+
+
 data PeerRate = PeerRate
-    { _peerUpRate     :: Double
-    , _peerDownRate   :: Double
-    , _peerInterested :: Bool
-    , _peerSeeding    :: Bool
-    , _peerSnubs      :: Bool
-    , _peerChokingUs  :: Bool
+    { _peerRateUpRate     :: Double
+    , _peerRateDownRate   :: Double
+    , _peerRateInterested :: Bool
+    , _peerRateChokingUs  :: Bool
     } deriving (Show)
 
 type RateTVar = TVar [(ThreadId, PeerRate)]

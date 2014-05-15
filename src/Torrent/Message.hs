@@ -8,11 +8,14 @@ module Torrent.Message
     , decodeHandshake
     , encodeHandshake
     , buildBitField
+    , readBitField
     ) where
 
 
 import Control.Applicative ((*>), (<$>), (<*>))
 import Control.Monad (when, unless)
+
+import Data.Bits (testBit)
 
 import Data.Binary (Binary, put, get, encode)
 import Data.Binary.Get (Get)
@@ -25,6 +28,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as B8
 
+import Data.Maybe (catMaybes)
 import Data.Word
 
 import Torrent.Peer
@@ -126,11 +130,11 @@ putMessage a = case a of
     Have pieceNum   -> p8 4 *> p32be pieceNum
     BitField bitfield
                     -> p8 5 *> pBS bitfield
-    Request pieceNum (PieceBlock offset length)
+    Request pieceNum (PieceBlock length offset)
                     -> p8 6 *> mapM_ p32be [pieceNum, offset, length]
     Piece pieceNum offset content
                     -> p8 7 *> mapM_ p32be [pieceNum, offset] *> pBS content
-    Cancel pieceNum (PieceBlock offset length)
+    Cancel pieceNum (PieceBlock length offset)
                     -> p8 8 *> mapM_ p32be [pieceNum, offset, length]
     Port port       -> p8 9 *> p16be port
 
@@ -194,7 +198,7 @@ putHandshake (Handshake peerId infoHash capabilities) = do
 
 
 incDecoder :: Get a -> IO ByteString -> Maybe ByteString -> String
-           -> IO (ByteString, a)
+           -> IO (ByteString, Integer, a)
 incDecoder parser drain mbs errPrefix = do
     let decoder = Get.runGetIncremental parser
     case mbs of
@@ -202,20 +206,20 @@ incDecoder parser drain mbs errPrefix = do
         Nothing -> loop decoder
   where
     loop (Get.Fail _ _ e) = ioError (userError $ errPrefix ++ ": " ++ e)
-    loop (Get.Done bs _ a) = return (bs, a)
+    loop (Get.Done bs size a) = return (bs, fromIntegral size, a)
     loop (Get.Partial feed) = drain >>= (\bs -> loop (feed (Just bs)))
 
 
 encodeMessage :: Message -> ByteString
 encodeMessage m = BL.toStrict (encode m)
 
-decodeMessage :: ByteString -> IO ByteString -> IO (ByteString, Message)
+decodeMessage :: ByteString -> IO ByteString -> IO (ByteString, Integer, Message)
 decodeMessage bs drain = incDecoder getMessage drain (Just bs) "decodeMessage"
 
 encodeHandshake :: Handshake -> ByteString
 encodeHandshake handshake = BL.toStrict (encode handshake)
 
-decodeHandshake :: IO ByteString -> IO (ByteString, Handshake)
+decodeHandshake :: IO ByteString -> IO (ByteString, Integer, Handshake)
 decodeHandshake drain = incDecoder getHandshake drain Nothing "decodeHandshake"
 
 
@@ -242,5 +246,25 @@ buildBitField size pieces = B.pack (build piecemap)
         , if b7 then 128 else 0
         ]
     bytify _ = error "impossible"
+
+
+readBitField :: B.ByteString -> [PieceNum]
+readBitField bitfield =
+    concat . decodeBytes 0 . B.unpack $ bitfield
+  where
+    checkBit :: Word8 -> Integer -> Int -> Maybe Integer
+    checkBit word offset n =
+        if testBit word (7 - n)
+            then Just (offset + fromIntegral n)
+            else Nothing
+
+    decodeByte :: Integer -> Word8 -> [Maybe PieceNum]
+    decodeByte offset word = map (checkBit word offset) [0..7]
+
+    decodeBytes _      []          = []
+    decodeBytes offset (word : ws) =
+        let current = catMaybes (decodeByte offset word)
+            remain  = decodeBytes (offset + 8) ws
+         in current : remain
 
 
