@@ -32,7 +32,6 @@ newtype PieceSet = PieceSet (IOUArray Integer Bool)
 
 newtype PieceSetFreezed = PieceSetFreezed (UArray Integer Bool)
 
-
 new :: MonadIO m => Integer -> m PieceSet
 new n = liftIO $ PieceSet `fmap` newArray (0, n - 1) False
 

@@ -25,9 +25,12 @@ library
   ghc-options:      -Wall -threaded
 
   exposed-modules:
-    Data.Queue
-    Data.PieceSet
+    Control.Concurrent.Timer
     Data.PieceHistogram
+    Data.PieceSet
+    Data.Queue
+    Data.Rate
+    Network.URI.Extra
     Torrent
     Torrent.Peer
     Torrent.Piece
@@ -37,9 +40,6 @@ library
     Torrent.File
     Torrent.Message
     Torrent.Announce
-    Rate
-    Timer
-    URI
 
   build-depends:
     base        == 4.*,

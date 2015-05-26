@@ -1,10 +1,10 @@
-module URI.Test (tests) where
+module Network.URI.Extra.Test (tests) where
 
 import qualified Data.ByteString.Char8 as B8
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import URI
+import Network.URI.Extra
 
 
 tests :: TestTree

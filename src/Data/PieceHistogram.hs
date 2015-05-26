@@ -20,7 +20,6 @@ import Torrent (PieceNum)
 
 newtype PieceHistogram = PieceHistogram { unPS :: PSQ PieceNum Int }
 
-
 size :: PieceHistogram -> Int
 size = PSQ.size . unPS
 

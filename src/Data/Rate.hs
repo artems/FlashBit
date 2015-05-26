@@ -1,4 +1,4 @@
-module Rate
+module Data.Rate
     ( Rate
     , mkRate
     , updateBytes
@@ -15,7 +15,6 @@ data Rate = Rate
     , _rLast  :: UTCTime     -- ^ Момент последнего обновления скорости
     }
 
-
 mkRate :: UTCTime -> Rate
 mkRate timestamp = Rate
     { _rRate  = 0
@@ -24,15 +23,12 @@ mkRate timestamp = Rate
     , _rLast  = timestamp
     }
 
-
 -- Минимальное промежуток времени, за который считается средняя скорость
 minRatePeriod :: NominalDiffTime
 minRatePeriod = fromInteger 20 -- Секунды
 
-
 updateBytes :: Integer -> Rate -> Rate
 updateBytes numBytes rate = rate { _rCount = _rCount rate + numBytes }
-
 
 extractRate :: UTCTime -> Rate -> (Integer, Double, Rate)
 extractRate timestamp rate =

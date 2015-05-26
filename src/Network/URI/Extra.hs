@@ -1,10 +1,12 @@
-module URI
-    ( urlEncode
+module Network.URI.Extra
+    ( module Network.URI
+    , urlEncode
     , urlEncodeVars
     ) where
 
 import Data.List (partition)
 import qualified Data.ByteString as B
+import Network.URI
 import Text.Printf
 
 

@@ -23,9 +23,8 @@ import Control.Exception
 
 import Network.HTTP hiding (urlEncodeVars)
 import Network.Stream (ConnError (ErrorMisc))
-import Network.URI (URI(..), parseURI)
+import Network.URI.Extra (URI(..), parseURI, urlEncodeVars)
 
-import URI (urlEncodeVars)
 import Torrent
 import Torrent.BCode (BCode)
 import qualified Torrent.BCode as BCode

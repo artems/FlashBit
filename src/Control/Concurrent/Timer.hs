@@ -1,4 +1,4 @@
-module Timer
+module Control.Concurrent.Timer
     ( TimerId
     , maxTimeout
     , setTimeout

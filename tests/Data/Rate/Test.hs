@@ -1,10 +1,10 @@
-module Rate.Test (tests) where
+module Data.Rate.Test (tests) where
 
 import Data.Time.Clock
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Rate
+import Data.Rate
 
 
 tests :: TestTree
