@@ -3,8 +3,11 @@ module Version
     , protoVersion
     ) where
 
+import Data.Version (showVersion)
+import qualified Paths_FlashBit as P (version)
+
 version :: String
-version = "0.1.0.0"
+version = showVersion P.version
 
 protoVersion :: String
-protoVersion = "0100"
+protoVersion = filter (/= '.') version

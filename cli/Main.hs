@@ -65,10 +65,10 @@ handleArgs args = case getOpt Permute options args of
 usageMessage :: String
 usageMessage = usageInfo header options
   where
-    header = "Usage: PROGRAM [option...] FILE"
+    header = "Usage: FlashBit [option...] FILE"
 
 printVersion :: IO ()
-printVersion = putStrLn $ "PROGRAM version " ++ version ++ "\n"
+printVersion = putStrLn $ "FlashBit version " ++ version ++ "\n"
 
 setupLogging :: [Option] -> IO ()
 setupLogging opts = do
