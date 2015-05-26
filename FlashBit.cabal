@@ -1,0 +1,113 @@
+name:                FlashBit
+
+--                   +-+------- breaking API changes
+--                   | | +----- non-breaking API additions
+--                   | | | +--- code changes with no API change
+version:             0.1.0.0
+
+-- A short (one-line) description of the package.
+synopsis:           Yet another BitTottent client
+
+-- A longer description of the package.
+description:        .
+
+author:             Artem Semenov
+maintainer:         tema.semenov@gmail.com
+license:            BSD3
+license-file:       LICENSE
+category:           Network
+build-type:         Simple
+cabal-version:      >= 1.10
+
+library
+  hs-source-dirs:   src
+
+  ghc-options:      -Wall -threaded
+
+  exposed-modules:
+    Data.Queue
+    Data.PieceSet
+    Data.PieceHistogram
+    Torrent
+    Torrent.Peer
+    Torrent.Piece
+    Torrent.BCode
+    Torrent.Tracker
+    Torrent.Metafile
+    Torrent.File
+    Torrent.Message
+    Torrent.Announce
+    Rate
+    Timer
+    URI
+
+  build-depends:
+    base        == 4.*,
+    array       == 0.5.*,
+    binary      == 0.7.*,
+    bytestring  == 0.10.*,
+    containers  == 0.5.*,
+    cryptohash  == 0.11.*,
+    directory   == 1.*,
+    filepath    == 1.*,
+    HTTP        == 4000.2.10,
+    haskeline   == 0.7.*,
+    hslogger    == 1.2.*,
+    mtl         == 2.1.*,
+    network     == 2.4.*,
+    PSQueue     == 1.1,
+    parsec      == 3.*,
+    random      == 1.*,
+    random-shuffle == 0.0.4,
+    stm         == 2.*,
+    time        == 1.4.*
+
+  default-language: Haskell2010
+
+test-suite flashbit-tests
+  type:             exitcode-stdio-1.0
+
+  main-is:          Main.hs
+
+  hs-source-dirs:   tests
+  ghc-options:      -Wall
+
+  build-depends:
+    FlashBit,
+    base        == 4.*,
+    tasty,
+    tasty-hunit,
+    tasty-smallcheck,
+    tasty-quickcheck,
+    array       == 0.5.*,
+    bytestring  == 0.10.*,
+    containers  == 0.5.*,
+    directory   == 1.*,
+    mtl         == 2.1.*,
+    network     == 2.4.*,
+    parsec      == 3.*,
+    random      == 1.*,
+    text        == 1.*,
+    time        == 1.4.*
+
+  default-language:    Haskell2010
+
+executable flashbit-cli
+  main-is:          Main.hs
+
+  hs-source-dirs:   cli
+
+  -- other-modules:
+
+  -- other-extensions:
+
+  -- Other library packages from which modules are imported.
+  build-depends:
+    FlashBit,
+    base        == 4.*,
+    hslogger    == 1.2.*,
+    mtl         == 2.1.*,
+    random      == 1.*,
+    stm         == 2.*
+
+  default-language: Haskell2010
