@@ -8,12 +8,12 @@ deps:
 	@$(CABAL) install --only-dependencies --force-reinstalls
 
 .PHONY: conf
-conf:
+conf: deps
 	@$(CABAL) sandbox init
 	@$(CABAL) configure
 
 .PHONY: build
-build:
+build: conf
 	@$(CABAL) build
 
 .PHONY: test
@@ -25,5 +25,5 @@ clean:
 	@$(CABAL) clean
 
 .PHONY: run
-run:
+run: build
 	@$(CABAL) run -- tests/_data/ubuntu-13.10-server-amd64.iso.torrent
