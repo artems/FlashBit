@@ -3,11 +3,11 @@ module Version
     , protoVersion
     ) where
 
-import Data.Version (showVersion)
+import Data.Version
 import qualified Paths_FlashBit as P (version)
 
 version :: String
 version = showVersion P.version
 
 protoVersion :: String
-protoVersion = filter (/= '.') version
+protoVersion = concatMap show . take 4 . versionBranch $ P.version

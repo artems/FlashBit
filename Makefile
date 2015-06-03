@@ -1,29 +1,37 @@
-CABAL=cabal --sandbox-config-file=.cabal.sandbox.config
+CABAL=cabal --sandbox-config-file=$(CABAL_SANDBOX_CONFIG)
+CABAL_SANDBOX_CONFIG=.cabal.sandbox.config
 
 .PHONY: all
 all: build
 
+.PHONY: sandbox
+sandbox:
+	@$(CABAL) sandbox init
+
 .PHONY: deps
-deps:
-	@$(CABAL) install --only-dependencies --force-reinstalls
+deps: sandbox
+	@$(CABAL) install --only-dependencies
 
 .PHONY: conf
 conf: deps
-	@$(CABAL) sandbox init
 	@$(CABAL) configure
 
 .PHONY: build
 build: conf
 	@$(CABAL) build
+.PHONY: build
+
+build-fast:
+	@$(CABAL) build
 
 .PHONY: test
-test:
+test: build
 	@$(CABAL) test --test-option=--hide-successes
+
+.PHONY: run
+run: build
+	@$(CABAL) run -- -d tests/_data/ubuntu-13.10-server-amd64.iso.torrent
 
 .PHONY: clean
 clean:
 	@$(CABAL) clean
-
-.PHONY: run
-run: build
-	@$(CABAL) run -- tests/_data/ubuntu-13.10-server-amd64.iso.torrent

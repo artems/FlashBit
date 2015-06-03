@@ -19,8 +19,16 @@ import System.Log.Formatter
 import System.Log.Handler (setFormatter)
 import System.Log.Handler.Simple
 
+import ProcessGroup
 import Torrent (mkPeerId, defaultPort)
 import Version (version, protoVersion)
+
+import FlashBit.Listen as Listen
+import FlashBit.Console as Console
+import FlashBit.PeerManager as PeerManager
+import FlashBit.TorrentManager as TorrentManager
+import FlashBit.PeerDatabase as PeerDatabase
+import FlashBit.TorrentDatabase as TorrentDatabase
 
 
 main :: IO ()
@@ -86,6 +94,23 @@ mainLoop opts files = do
     stdGen <- newStdGen
     let peerId = mkPeerId stdGen protoVersion
     debugM "Main" $ "Сгенерирован peer_id: " ++ peerId
+
+    torrentChan      <- newTChanIO
+    peerManagerChan  <- newTChanIO
+    peerDatabase     <- atomically mkPeerDatabaseSTM
+    torrentDatabase  <- atomically mkTorrentDatabaseSTM
+
+    let addTorrent = atomically . writeTChan torrentChan . TorrentManager.AddTorrent
+    forM_ files addTorrent
+
+    group <- initGroup
+    let actions =
+            [ runConsole torrentChan torrentDatabase
+            , runPeerManager peerId peerDatabase torrentDatabase peerManagerChan
+            , runTorrentManager peerId peerDatabase torrentDatabase peerManagerChan torrentChan
+            , runListen defaultPort peerManagerChan
+            ]
+    runGroup group actions >>= exitStatus
 
     debugM "Main" "Выход"
 

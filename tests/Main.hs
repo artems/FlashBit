@@ -3,7 +3,6 @@
 import Test.Tasty
 
 -- import qualified Data.Queue.Test
-import qualified Data.PieceSet.Test
 import qualified Data.Rate.Test
 import qualified Network.URI.Extra.Test
 import qualified Torrent.Test
@@ -21,8 +20,7 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "(all)"
     -- [ Data.Queue.Test.tests
-    [ Data.PieceSet.Test.tests
-    , Data.Rate.Test.tests
+    [ Data.Rate.Test.tests
     , Network.URI.Extra.Test.tests
     , Torrent.Test.tests
     , Torrent.BCode.Test.tests

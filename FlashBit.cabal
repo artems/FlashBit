@@ -40,9 +40,36 @@ library
     Torrent.File
     Torrent.Message
     Torrent.Announce
+    Process
+    ProcessGroup
+    FlashBit.Peer
+    FlashBit.Peer.Common
+    FlashBit.Peer.Receiver
+    FlashBit.Peer.Sender
+    FlashBit.Peer.Sender.State
+    FlashBit.Peer.Handler
+    FlashBit.Peer.Handler.State
+    FlashBit.PeerDatabase
+    FlashBit.Listen
+    FlashBit.Console
+    FlashBit.Tracker
+    FlashBit.Tracker.Chan
+    FlashBit.Tracker.State
+    FlashBit.FileAgent
+    FlashBit.PeerManager
+    FlashBit.PeerManager.Chan
+    FlashBit.PeerManager.State
+    FlashBit.ChokeManager
+    FlashBit.PieceManager
+    FlashBit.PieceManager.Chan
+    FlashBit.PieceManager.State
+    FlashBit.TorrentManager
+    FlashBit.TorrentDatabase
+    FlashBit.TorrentThreadDatabase
 
   build-depends:
     base        == 4.*,
+    async       == 2.0.*,
     array       == 0.5.*,
     binary      == 0.7.*,
     bytestring  == 0.10.*,

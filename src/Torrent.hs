@@ -3,14 +3,14 @@ module Torrent
     , module Torrent.Piece
     , InfoHash
     , AnnounceList
-    , Torrent(..)
+    , TorrentMeta(..)
     , TorrentStatus(..)
     , TorrentPieceMode(..)
     , UpDownStat(..)
     , defaultPort
     , defaultBlockSize
     , mkPeerId
-    , mkTorrent
+    , mkTorrentMeta
     , mkPieceArray
     , pieceArraySize
     , checkPieceNum
@@ -35,10 +35,10 @@ type InfoHash = B.ByteString
 
 type AnnounceList = [[B.ByteString]]
 
-data Torrent = Torrent
-    { _torrentInfoHash     :: InfoHash
-    , _torrentPieceCount   :: Integer
-    , _torrentAnnounceList :: AnnounceList
+data TorrentMeta = TorrentMeta
+    { _torrentMetaInfoHash     :: InfoHash
+    , _torrentMetaPieceCount   :: Integer
+    , _torrentMetaAnnounceList :: AnnounceList
     } deriving (Eq, Show)
 
 data TorrentStatus = TorrentStatus
@@ -83,16 +83,16 @@ mkPeerId gen version = header ++ take count randomChars
     header = "-FB" ++ (take 10 version) ++ "-"
     randomChars = randomRs ('A', 'Z') gen
 
-mkTorrent :: BCode -> Maybe Torrent
-mkTorrent bc = do
+mkTorrentMeta :: BCode -> Maybe TorrentMeta
+mkTorrentMeta bc = do
     infoHash   <- BCode.infoHash bc
     announce   <- BCode.announce bc
     pieceCount <- BCode.infoPieceCount bc
     let announceList = fromMaybe [[announce]] (BCode.announceList bc)
-    return $ Torrent
-        { _torrentInfoHash     = infoHash
-        , _torrentPieceCount   = pieceCount
-        , _torrentAnnounceList = announceList
+    return $ TorrentMeta
+        { _torrentMetaInfoHash     = infoHash
+        , _torrentMetaPieceCount   = pieceCount
+        , _torrentMetaAnnounceList = announceList
         }
 
 mkPieceArray :: BCode -> Maybe PieceArray

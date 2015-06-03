@@ -95,20 +95,20 @@ buildRequestParams :: TrackerParam -> [(B.ByteString, B.ByteString)]
 buildRequestParams params =
     [ (B8.pack "num", packNum (50 :: Int))
     , (B8.pack "port", packNum $ _paramLocalPort params)
-    , (B8.pack "left", packNum $ _paramLeft params)
     , (B8.pack "compact", packNum (1 :: Int))
     , (B8.pack "peer_id", B8.pack $ _paramPeerId params)
-    , (B8.pack "uploaded", packNum $ _paramUploaded params)
     , (B8.pack "info_hash", _paramInfoHash params)
+    , (B8.pack "left", packNum $ _paramLeft params)
+    , (B8.pack "uploaded", packNum $ _paramUploaded params)
     , (B8.pack "downloaded", packNum $ _paramDownloaded params)
-    ]
-    ++ (event $ _paramStatus params)
+    ] ++ (event $ _paramStatus params)
   where
     event e = case e of
         Running   -> []
         Stopped   -> [(B8.pack "event", B8.pack "stopped")]
         Started   -> [(B8.pack "event", B8.pack "started")]
         Completed -> [(B8.pack "event", B8.pack "completed")]
+
     packNum :: (Show a, Integral a) => a -> B.ByteString
     packNum = B8.pack . show
 
