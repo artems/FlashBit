@@ -2,24 +2,26 @@ module FlashBit.PieceManager
     ( runPieceManager
     ) where
 
-import Control.Concurrent.STM
-import Control.Monad.Reader (when, liftIO, asks)
 import qualified Data.PieceSet as PS
 import qualified Data.ByteString as B
+import Control.Concurrent.STM
+import Control.Monad.Reader (when, liftIO, asks)
 
 import Process
 import Torrent
 import FlashBit.PieceManager.Chan
 import FlashBit.PieceManager.State
+import FlashBit.FileAgent (FileAgentMessage)
 import qualified FlashBit.FileAgent as FileAgent
+import FlashBit.TorrentDatabase (TorrentTVar)
 import qualified FlashBit.TorrentDatabase as TorrentDatabase
 
 
 data PConf = PConf
     { _infoHash         :: InfoHash
     , _checkTMV         :: TMVar Bool
-    , _torrentTV        :: TorrentDatabase.TorrentTVar
-    , _fileAgentChan    :: TChan FileAgent.FileAgentMessage
+    , _torrentTV        :: TorrentTVar
+    , _fileAgentChan    :: TChan FileAgentMessage
     , _broadcastChan    :: TChan PieceBroadcastMessage
     , _pieceManagerChan :: TChan PieceManagerMessage
     }
@@ -30,18 +32,29 @@ instance ProcessName PConf where
 type PState = PieceManagerState
 
 
+runPieceManager :: InfoHash -> PieceArray -> PieceHaveMap -> TorrentTVar
+                -> TChan FileAgentMessage
+                -> TChan PieceBroadcastMessage
+                -> TChan PieceManagerMessage
+                -> IO ()
 runPieceManager
-    :: InfoHash -> PieceArray -> PieceHaveMap
-    -> TorrentDatabase.TorrentTVar
-    -> TChan FileAgent.FileAgentMessage
-    -> TChan PieceBroadcastMessage
-    -> TChan PieceManagerMessage
-    -> IO ()
-runPieceManager infoHash pieceArray pieceHaveMap torrentTV fileAgentChan broadcastChan pieceManagerChan = do
-    checkTMV       <- newEmptyTMVarIO
-    let pconf  = PConf infoHash checkTMV torrentTV fileAgentChan broadcastChan pieceManagerChan
-        pstate = mkPieceManagerState pieceHaveMap pieceArray
-    wrapProcess pconf pstate process
+    infoHash
+    pieceArray
+    pieceHaveMap
+    torrentTV
+    fileAgentChan
+    broadcastChan
+    pieceManagerChan = do
+        checkTMV   <- newEmptyTMVarIO
+        let pconf  = PConf
+                infoHash
+                checkTMV
+                torrentTV
+                fileAgentChan
+                broadcastChan
+                pieceManagerChan
+            pstate = mkPieceManagerState pieceArray pieceHaveMap
+        wrapProcess pconf pstate process
 
 process :: Process PConf PState ()
 process = do
@@ -86,7 +99,10 @@ receive message = do
                         broadcastPieceComplete pieceNum
                         torrentComplete <- markPieceDone pieceNum
                         when torrentComplete $ do
+                            liftIO . atomically $ 
+                                TorrentDatabase.torrentCompletedSTM torrentTV
                             debugP $ "Полностью скачан торрент"
+                            -- TODO send tracker "complete"
                     else do
                         putbackPiece pieceNum
 
@@ -94,7 +110,8 @@ receive message = do
             mapM_ putbackBlock blocks
 
 
-askWriteBlock :: PieceNum -> PieceBlock -> B.ByteString -> Process PConf PState ()
+askWriteBlock :: PieceNum -> PieceBlock -> B.ByteString
+              -> Process PConf PState ()
 askWriteBlock pieceNum block pieceData = do
     fileAgentChan <- asks _fileAgentChan
     let message = FileAgent.WriteBlock pieceNum block pieceData

@@ -3,7 +3,6 @@ module FlashBit.TorrentDatabase
     , TorrentState(..)
     , TorrentChannel(..)
     , TorrentDatabaseTVar
-    , mkTorrentState
     , mkTorrentStateSTM
     , mkTorrentDatabaseSTM
     , addTorrentSTM
@@ -20,13 +19,12 @@ module FlashBit.TorrentDatabase
     ) where
 
 import qualified Data.Map as M
-import Control.Monad (liftM)
 import Control.Concurrent.STM
 
 import Torrent
 import qualified FlashBit.FileAgent as FileAgent
-import qualified FlashBit.PieceManager.Chan as PieceManager
 import qualified FlashBit.Tracker.Chan as Tracker
+import qualified FlashBit.PieceManager.Chan as PieceManager
 
 
 data TorrentState = TorrentState
@@ -49,18 +47,18 @@ type TorrentDatabase = M.Map InfoHash TorrentTVar
 
 type TorrentDatabaseTVar = TVar TorrentDatabase
 
-mkTorrentState :: InfoHash -> PieceArray -> Integer -> TorrentChannel -> TorrentState
-mkTorrentState infoHash pieceArray left torrentChannel =
-        TorrentState
-            { _torrentInfoHash   = infoHash
-            , _torrentPieceArray = pieceArray
-            , _torrentStatus     = mkTorrentStatus left
-            , _torrentChannel    = torrentChannel
-            }
+mkTorrentState :: InfoHash -> PieceArray -> Integer -> Integer -> TorrentChannel -> TorrentState
+mkTorrentState infoHash pieceArray size left torrentChannel =
+    TorrentState
+        { _torrentInfoHash   = infoHash
+        , _torrentPieceArray = pieceArray
+        , _torrentStatus     = mkTorrentStatus size left
+        , _torrentChannel    = torrentChannel
+        }
 
-mkTorrentStateSTM :: InfoHash -> PieceArray -> Integer -> TorrentChannel -> STM TorrentTVar
-mkTorrentStateSTM infoHash pieceArray left torrentChannel =
-    newTVar $ mkTorrentState infoHash pieceArray left torrentChannel
+mkTorrentStateSTM :: InfoHash -> PieceArray -> Integer -> Integer -> TorrentChannel -> STM TorrentTVar
+mkTorrentStateSTM infoHash pieceArray size left torrentChannel =
+    newTVar $ mkTorrentState infoHash pieceArray size left torrentChannel
 
 mkTorrentDatabase :: TorrentDatabase
 mkTorrentDatabase = M.empty
@@ -68,10 +66,11 @@ mkTorrentDatabase = M.empty
 mkTorrentDatabaseSTM :: STM TorrentDatabaseTVar
 mkTorrentDatabaseSTM = newTVar mkTorrentDatabase
 
-mkTorrentStatus :: Integer -> TorrentStatus
-mkTorrentStatus left =
+mkTorrentStatus :: Integer -> Integer -> TorrentStatus
+mkTorrentStatus size left =
     TorrentStatus
-        { _torrentLeft       = left
+        { _torrentSize       = size
+        , _torrentLeft       = left
         , _torrentUploaded   = 0
         , _torrentDownloaded = 0
         , _torrentComplete   = Nothing
@@ -93,10 +92,10 @@ removeTorrentSTM :: TorrentDatabaseTVar -> InfoHash -> STM ()
 removeTorrentSTM tv infoHash = modify tv $ M.delete infoHash
 
 doesTorrentExistSTM :: TorrentDatabaseTVar -> InfoHash -> STM Bool
-doesTorrentExistSTM tv infoHash = M.member infoHash `liftM` readTVar tv
+doesTorrentExistSTM tv infoHash = M.member infoHash `fmap` readTVar tv
 
 getTorrentSTM :: TorrentDatabaseTVar -> InfoHash -> STM (Maybe TorrentTVar)
-getTorrentSTM tv infoHash = M.lookup infoHash `liftM` readTVar tv
+getTorrentSTM tv infoHash = M.lookup infoHash `fmap` readTVar tv
 
 getStatisticSTM :: TorrentDatabaseTVar -> STM [(InfoHash, TorrentStatus)]
 getStatisticSTM tv = do
@@ -112,10 +111,10 @@ adjustStatus tv adjuster = modify tv $ \torrent ->
     torrent { _torrentStatus = adjuster (_torrentStatus torrent) }
 
 getStatusSTM :: TorrentTVar -> STM TorrentStatus
-getStatusSTM tv = _torrentStatus `liftM` readTVar tv
+getStatusSTM tv = _torrentStatus `fmap` readTVar tv
 
 isTorrentCompleteSTM :: TorrentTVar -> STM Bool
-isTorrentCompleteSTM tv = ((== Seeding) . _torrentPeerStatus) `liftM` getStatusSTM tv
+isTorrentCompleteSTM tv = ((== Seeding) . _torrentPeerStatus) `fmap` getStatusSTM tv
 
 transferredUpdateSTM :: TorrentTVar -> UpDownStat -> STM ()
 transferredUpdateSTM tv upDown = do

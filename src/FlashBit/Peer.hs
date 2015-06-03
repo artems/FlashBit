@@ -15,8 +15,8 @@ import Process
 import ProcessGroup
 import Torrent
 import qualified Torrent.Message as TM
+import FlashBit.Peer.Main
 import FlashBit.Peer.Sender
-import FlashBit.Peer.Handler
 import FlashBit.Peer.Receiver
 import FlashBit.PeerDatabase
 import qualified FlashBit.PeerManager.Chan as PeerManager
@@ -126,15 +126,15 @@ runPeerGroup socket infoHash torrentTV remain received sended = do
 
     group <- liftIO initGroup
     let actions =
-            [ runPeerSender prefix socket sendTV fileAgentChan sendChan
-            , runPeerReceiver prefix socket remain receiveTV peerChan
-            , runPeerHandler prefix infoHash pieceArray sendTV receiveTV
+            [ runPeerMain prefix infoHash pieceArray sendTV receiveTV
                 peerState
                 sendChan
                 peerChan
                 torrentTV
                 pieceManagerChan
                 pieceBroadcastChanDup
+            , runPeerSender prefix socket sendTV fileAgentChan sendChan
+            , runPeerReceiver prefix socket remain receiveTV peerChan
             ]
     result <- liftIO $ bracket_
         (connect' sockaddr peerState peerEventChan)

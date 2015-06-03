@@ -1,5 +1,5 @@
-module FlashBit.Peer.Handler
-    ( runPeerHandler
+module FlashBit.Peer.Main
+    ( runPeerMain
     ) where
 
 import Control.Concurrent.STM
@@ -30,7 +30,7 @@ data PConf = PConf
     , _blockV             :: TMVar (TorrentPieceMode, [(PieceNum, PieceBlock)])
     , _peerTV             :: PeerTVar
     , _sendChan           :: TChan SenderMessage
-    , _peerChan           :: TChan PeerHandlerMessage
+    , _peerChan           :: TChan PeerMessage
     , _torrentTV          :: TorrentDatabase.TorrentTVar
     , _pieceManagerChan   :: TChan PieceManager.PieceManagerMessage
     , _pieceBroadcastChan :: TChan PieceManager.PieceBroadcastMessage
@@ -42,16 +42,16 @@ instance ProcessName PConf where
 type PState = ()
 
 
-runPeerHandler :: String -> InfoHash -> PieceArray
-               -> TVar Integer -> TVar Integer
-               -> PeerTVar
-               -> TChan SenderMessage
-               -> TChan PeerHandlerMessage
-               -> TorrentDatabase.TorrentTVar
-               -> TChan PieceManager.PieceManagerMessage
-               -> TChan PieceManager.PieceBroadcastMessage
-               -> IO ()
-runPeerHandler prefix infoHash pieceArray sendTV receiveTV
+runPeerMain :: String -> InfoHash -> PieceArray
+            -> TVar Integer -> TVar Integer
+            -> PeerTVar
+            -> TChan SenderMessage
+            -> TChan PeerMessage
+            -> TorrentDatabase.TorrentTVar
+            -> TChan PieceManager.PieceManagerMessage
+            -> TChan PieceManager.PieceBroadcastMessage
+            -> IO ()
+runPeerMain prefix infoHash pieceArray sendTV receiveTV
     peerTV
     sendChan
     peerChan
@@ -66,7 +66,7 @@ runPeerHandler prefix infoHash pieceArray sendTV receiveTV
             pieceManagerChan
             pieceBroadcastChan
         let pstate = ()
-        _timerId <- setTimeout 5 . atomically $ writeTChan peerChan PeerTick
+        _timerId <- setTimeout 5 . atomically $ writeTChan peerChan Tick
         wrapProcess pconf pstate (startup >> process)
 
 
@@ -75,7 +75,7 @@ mkConf :: String -> InfoHash -> PieceArray
        -> TVar Integer
        -> PeerTVar
        -> TChan SenderMessage
-       -> TChan PeerHandlerMessage
+       -> TChan PeerMessage
        -> TorrentDatabase.TorrentTVar
        -> TChan PieceManager.PieceManagerMessage
        -> TChan PieceManager.PieceBroadcastMessage
@@ -126,7 +126,7 @@ process = do
     receive message
     process
 
-wait :: Process PConf PState (Either PeerHandlerMessage PieceBroadcastMessage)
+wait :: Process PConf PState (Either PeerMessage PieceBroadcastMessage)
 wait = do
     peerChan           <- asks _peerChan
     pieceBroadcastChan <- asks _pieceBroadcastChan
@@ -134,7 +134,7 @@ wait = do
         (readTChan peerChan >>= return . Left) `orElse`
         (readTChan pieceBroadcastChan >>= return . Right)
 
-receive :: Either PeerHandlerMessage PieceBroadcastMessage
+receive :: Either PeerMessage PieceBroadcastMessage
         -> Process PConf PState ()
 receive (Left message) = do
     case message of
@@ -146,7 +146,7 @@ receive (Left message) = do
             weChoking <- liftIO . atomically $ isWeChokingSTM peerTV
             handleChokeManagerMessage isChoke weChoking
 
-        PeerTick -> do
+        Tick -> do
             timerTick
 
 receive (Right message) = do
@@ -329,7 +329,7 @@ timerTick = do
     -}
 
     peerChan <- asks _peerChan
-    _timerId <- liftIO . setTimeout 5 $ atomically $ writeTChan peerChan PeerTick
+    _timerId <- liftIO . setTimeout 5 $ atomically $ writeTChan peerChan Tick
     return ()
 
 fillupBlockQueue :: Process PConf PState ()

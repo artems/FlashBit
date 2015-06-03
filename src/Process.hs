@@ -16,6 +16,7 @@ module Process
     , logP
     , infoP
     , debugP
+    , noticeP
     , errorP
     , warningP
     , criticalP
@@ -71,8 +72,8 @@ catchProcess :: (ProcessName pconf)
 catchProcess pconf pstate proc terminate = do
     let name = processName pconf
     bracket_
-        (return ()) -- (debugM name "Старт")
-        (return ()) -- (debugM name "Выход")
+        (debugM name "Старт")
+        (debugM name "Выход")
         (catches (action `onException` terminate pconf)
             [ Handler (\ThreadKilled -> debugM name $ "Остановлен")
             , Handler (\StopProcessException -> debugM name $ "Завершение")
@@ -96,6 +97,9 @@ infoP = logP INFO
 
 debugP :: (ProcessName pconf) => String -> Process pconf pstate ()
 debugP = logP DEBUG
+
+noticeP :: (ProcessName pconf) => String -> Process pconf pstate ()
+noticeP = logP NOTICE
 
 errorP :: (ProcessName pconf) => String -> Process pconf pstate ()
 errorP = logP ERROR

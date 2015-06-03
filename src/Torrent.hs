@@ -36,13 +36,15 @@ type InfoHash = B.ByteString
 type AnnounceList = [[B.ByteString]]
 
 data TorrentMeta = TorrentMeta
-    { _torrentMetaInfoHash     :: InfoHash
+    { _torrentMetaSize         :: Integer
+    , _torrentMetaInfoHash     :: InfoHash
     , _torrentMetaPieceCount   :: Integer
     , _torrentMetaAnnounceList :: AnnounceList
     } deriving (Eq, Show)
 
 data TorrentStatus = TorrentStatus
-    { _torrentLeft       :: Integer
+    { _torrentSize       :: Integer
+    , _torrentLeft       :: Integer
     , _torrentUploaded   :: Integer
     , _torrentDownloaded :: Integer
     , _torrentComplete   :: Maybe Integer
@@ -51,7 +53,7 @@ data TorrentStatus = TorrentStatus
     }
 
 instance Show TorrentStatus where
-    show (TorrentStatus left up down complete incomplete state) =
+    show (TorrentStatus _size left up down complete incomplete state) =
         concat
             [ "left: "          ++ show left        ++ " "
             , "uploaded: "      ++ show up          ++ " "
@@ -85,12 +87,14 @@ mkPeerId gen version = header ++ take count randomChars
 
 mkTorrentMeta :: BCode -> Maybe TorrentMeta
 mkTorrentMeta bc = do
+    size       <- BCode.infoLength bc
     infoHash   <- BCode.infoHash bc
     announce   <- BCode.announce bc
     pieceCount <- BCode.infoPieceCount bc
     let announceList = fromMaybe [[announce]] (BCode.announceList bc)
     return $ TorrentMeta
-        { _torrentMetaInfoHash     = infoHash
+        { _torrentMetaSize         = size
+        , _torrentMetaInfoHash     = infoHash
         , _torrentMetaPieceCount   = pieceCount
         , _torrentMetaAnnounceList = announceList
         }

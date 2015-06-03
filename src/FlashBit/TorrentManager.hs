@@ -2,36 +2,36 @@
 
 module FlashBit.TorrentManager
     ( runTorrentManager
-    , TorrentManagerMessage(..)
     ) where
 
+import Control.Monad (when, unless, forM_)
+import Control.Monad.Reader (liftIO, asks)
+import Control.Exception
 import Control.Concurrent
 import Control.Concurrent.STM
-import Control.Exception
-import Control.Monad (unless, forM_)
-import Control.Monad.Reader (liftIO, asks)
 
 import Process
 import ProcessGroup
 import Torrent
 import Torrent.File
 import FlashBit.TorrentDatabase
+import FlashBit.TorrentManager.Chan
 import FlashBit.TorrentThreadDatabase
 import FlashBit.PeerDatabase (PeerDatabaseTVar)
 import qualified FlashBit.Tracker as Tracker
 import qualified FlashBit.FileAgent as FileAgent
 import qualified FlashBit.PieceManager as PieceManager
-import qualified FlashBit.PeerManager.Chan as PeerManager
+import FlashBit.PeerManager.Chan (PeerManagerMessage)
 import qualified FlashBit.ChokeManager as ChokeManager
 
 
 data PConf = PConf
-    { _peerId           :: PeerId
-    , _peerDb           :: PeerDatabaseTVar
-    , _threadDb         :: TorrentThreadDatabaseTVar
-    , _torrentDb        :: TorrentDatabaseTVar
-    , _peerManagerChan  :: TChan PeerManager.PeerManagerMessage
-    , _torrentChan      :: TChan TorrentManagerMessage
+    { _peerId             :: PeerId
+    , _peerDb             :: PeerDatabaseTVar
+    , _threadDb           :: TorrentThreadDatabaseTVar
+    , _torrentDb          :: TorrentDatabaseTVar
+    , _peerManagerChan    :: TChan PeerManagerMessage
+    , _torrentManagerChan :: TChan TorrentManagerMessage
     }
 
 instance ProcessName PConf where
@@ -39,23 +39,29 @@ instance ProcessName PConf where
 
 type PState = ()
 
-data TorrentManagerMessage
-    = AddTorrent FilePath
-    | RemoveTorrent FilePath
-    | Shutdown (MVar ())
-
 
 runTorrentManager :: PeerId
                   -> PeerDatabaseTVar
                   -> TorrentDatabaseTVar
-                  -> TChan PeerManager.PeerManagerMessage
+                  -> TChan PeerManagerMessage
                   -> TChan TorrentManagerMessage
                   -> IO ()
-runTorrentManager peerId peerDb torrentDb peerManagerChan torrentChan = do
-    threadDb <- atomically mkTorrentThreadDatabaseSTM
-    let pconf  = PConf peerId peerDb threadDb torrentDb peerManagerChan torrentChan
-        pstate = ()
-    catchProcess pconf pstate process terminate
+runTorrentManager
+    peerId
+    peerDb
+    torrentDb
+    peerManagerChan
+    torrentManagerChan = do
+        threadDb <- atomically mkTorrentThreadDatabaseSTM
+        let pconf  = PConf
+                peerId
+                peerDb
+                threadDb
+                torrentDb
+                peerManagerChan
+                torrentManagerChan
+        let pstate = ()
+        catchProcess pconf pstate process terminate
 
 process :: Process PConf PState ()
 process = do
@@ -65,30 +71,31 @@ process = do
 
 wait :: Process PConf PState TorrentManagerMessage
 wait = do
-    torrentChan <- asks _torrentChan
-    liftIO . atomically $ readTChan torrentChan
+    torrentManagerChan <- asks _torrentManagerChan
+    liftIO . atomically $ readTChan torrentManagerChan
 
 receive :: TorrentManagerMessage -> Process PConf PState ()
 receive message =
     case message of
-        AddTorrent torrentFile -> do
-            debugP $ "Добавляем торрент: " ++ torrentFile
-            addTorrent torrentFile
+        AddTorrent torrentFile targetFolder start -> do
+            noticeP $ "Добавляем торрент: " ++ torrentFile
+            addTorrent torrentFile targetFolder start
 
         RemoveTorrent torrentFile -> do
-            debugP $ "Удаленям торрент: " ++ torrentFile
-            errorP $ "Удаление торрента не реализованно"
+            noticeP  $ "Удаляем торрент: " ++ torrentFile
+            warningP $ "Удаление торрента не реализовано"
             stopProcess
 
         Shutdown waitV -> do
-            debugP $ "Завершение (shutdown)"
+            noticeP $ "Завершение (shutdown)"
             shutdown waitV
 
 terminate :: PConf -> IO ()
 terminate pconf = do
     let threadDb = _threadDb pconf
-    threads  <- atomically $ getAllTorrentThreadsSTM threadDb
-    forM_ threads $ \(_, (group, stopM)) -> stopGroup group >> takeMVar stopM
+    threads <- atomically $ getAllTorrentThreadsSTM threadDb
+    forM_ threads $ \(_, (group, stopM)) -> do
+        stopGroup group >> takeMVar stopM
     return ()
 
 shutdown :: MVar () -> Process PConf PState ()
@@ -98,7 +105,8 @@ shutdown waitV = do
     waitTracker <- liftIO newEmptyMVar
     forM_ threads $ \(infoHash, _) -> do
         let message = Tracker.Shutdown waitTracker
-        mbTrackerChan <- liftIO . atomically $ getTorrentTrackerChanSTM threadDb infoHash
+        mbTrackerChan <- liftIO . atomically $
+            getTorrentTrackerChanSTM threadDb infoHash
         case mbTrackerChan of
             Just trackerChan -> do
                 liftIO . atomically $ writeTChan trackerChan message
@@ -108,43 +116,51 @@ shutdown waitV = do
     liftIO $ putMVar waitV ()
 
 
--- TODO: rewrite
-addTorrent :: FilePath -> Process PConf PState ()
-addTorrent torrentFile = do
+-- 1. Файл не существует
+-- 2. Файл не может быть прочитан (нет прав)
+-- 3. Файл не верно закодирован и его невозможно прочесть
+-- 4. В файл отсутствуют обязательные поля (например, announce_url)
+-- 5. Невозможно создать файл-цель для закачки (нет прав, неверный путь)
+addTorrent :: FilePath -> FilePath -> Bool -> Process PConf PState ()
+addTorrent torrentFile targetFolder start = do
     torrentDb <- asks _torrentDb
     bcAttempt <- liftIO . try $ openTorrent torrentFile
     case bcAttempt of
         Right bc -> case mkTorrentMeta bc of
             Just torrentMeta -> do
                 let infoHash = _torrentMetaInfoHash torrentMeta
-                exist <- liftIO . atomically $ doesTorrentExistSTM torrentDb infoHash
+                exist <- liftIO . atomically $
+                    doesTorrentExistSTM torrentDb infoHash
                 unless exist $ do
-                    openAttempt <- liftIO . try $ openTarget "." bc
+                    openAttempt <- liftIO . try $ openTarget targetFolder bc
                     case openAttempt of
-                        Right (target, pieceArray, pieceHaveMap) -> do
-                            startTorrent target pieceArray pieceHaveMap torrentMeta
+                        Right torrent -> do
+                            startTorrent torrent torrentMeta start
                         Left (e :: SomeException) -> openFailure e
             Nothing -> parseFailure
         Left (e :: SomeException) -> openFailure e
   where
     openFailure msg = do
         warningP $ "Не удается открыть torrent-файл " ++ torrentFile
-        debugP   $ show msg
+        warningP $ show msg
     parseFailure =
         warningP $ "Не удается прочитать torrent-файл " ++ torrentFile
 
 
-startTorrent :: FileRec -> PieceArray -> PieceHaveMap -> TorrentMeta -> Process PConf PState ()
-startTorrent target pieceArray pieceHaveMap torrentMeta = do
-    peerId             <- asks _peerId
-    peerDb             <- asks _peerDb
-    peerManagerChan    <- asks _peerManagerChan
+startTorrent :: (FileRec, PieceArray, PieceHaveMap) -> TorrentMeta -> Bool
+             -> Process PConf PState ()
+startTorrent (target, pieceArray, pieceHaveMap) torrentMeta start = do
+    peerId          <- asks _peerId
+    peerDb          <- asks _peerDb
+    peerManagerChan <- asks _peerManagerChan
+
     trackerChan        <- liftIO newTChanIO
     fileAgentChan      <- liftIO newTChanIO
     pieceManagerChan   <- liftIO newTChanIO
     chokeManagerChan   <- liftIO newTChanIO
     pieceBroadcastChan <- liftIO newBroadcastTChanIO
 
+    let size     = _torrentMetaSize torrentMeta
     let left     = bytesLeft pieceArray pieceHaveMap
     let infoHash = _torrentMetaInfoHash torrentMeta
     let channel  = TorrentChannel
@@ -152,11 +168,12 @@ startTorrent target pieceArray pieceHaveMap torrentMeta = do
             fileAgentChan
             pieceManagerChan
             pieceBroadcastChan
-    torrentTV <- liftIO . atomically $ mkTorrentStateSTM infoHash pieceArray left channel
-    debugP $ "Осталось скачать " ++ show left ++ " байт"
+    torrentTV <- liftIO . atomically $
+        mkTorrentStateSTM infoHash pieceArray size left channel
+    noticeP $ "Осталось скачать " ++ show left ++ " байт"
 
-    -- TODO optional auto-start
-    liftIO . atomically $ writeTChan trackerChan Tracker.Start
+    when start $ do
+        liftIO . atomically $ writeTChan trackerChan Tracker.Start
 
     let actions =
             [ Tracker.runTracker
@@ -192,17 +209,19 @@ startTorrentGroup :: [IO ()] -> InfoHash -> TorrentTVar
 startTorrentGroup actions infoHash torrentTV trackerChan = do
     threadDb  <- asks _threadDb
     torrentDb <- asks _torrentDb
-    group     <- liftIO initGroup
-    stopM     <- liftIO newEmptyMVar
-    _         <- liftIO $ forkFinally
+
+    group <- liftIO initGroup
+    stopM <- liftIO newEmptyMVar
+    _     <- liftIO $ forkFinally
         (runTorrent stopM threadDb torrentDb group)
         (stopTorrent stopM threadDb torrentDb)
     return ()
   where
     runTorrent stopM threadDb torrentDb group = do
+        let thread = (group, stopM)
         atomically $ do
             addTorrentSTM torrentDb torrentTV
-            addTorrentThreadSTM threadDb infoHash (group, stopM) trackerChan
+            addTorrentThreadSTM threadDb infoHash thread trackerChan
         runGroup group actions >> return ()
 
     stopTorrent stopM threadDb torrentDb _reason = do

@@ -51,8 +51,8 @@ data PieceState
 type PieceManagerMonad a = (MonadIO m, S.MonadState PieceManagerState m) => m a
 
 
-mkPieceManagerState :: PieceHaveMap -> PieceArray -> PieceManagerState
-mkPieceManagerState pieceHaveMap pieceArray =
+mkPieceManagerState :: PieceArray -> PieceHaveMap -> PieceManagerState
+mkPieceManagerState pieceArray pieceHaveMap =
     let pieces = M.map isDone pieceHaveMap
     in
         PieceManagerState

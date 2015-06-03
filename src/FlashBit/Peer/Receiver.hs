@@ -16,7 +16,7 @@ data PConf = PConf
     { _prefix    :: String
     , _socket    :: S.Socket
     , _receiveTV :: TVar Integer
-    , _peerChan  :: TChan PeerHandlerMessage
+    , _peerChan  :: TChan PeerMessage
     }
 
 instance ProcessName PConf where
@@ -27,7 +27,7 @@ type PState = ()
 
 runPeerReceiver :: String -> S.Socket -> B.ByteString
                 -> TVar Integer
-                -> TChan PeerHandlerMessage
+                -> TChan PeerMessage
                 -> IO ()
 runPeerReceiver prefix socket remain receiveTV peerChan = do
     let pconf = PConf prefix socket receiveTV peerChan

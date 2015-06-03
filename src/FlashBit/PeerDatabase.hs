@@ -70,7 +70,7 @@ data PeerState = PeerState
     , _dnSpeed              :: Double
     , _numPieces            :: Integer
     , _missingPieces        :: Integer
-    , _peerChan             :: TChan PeerHandlerMessage
+    , _peerChan             :: TChan PeerMessage
     , _infoHash             :: InfoHash
     }
 
@@ -80,7 +80,7 @@ type PeerDatabase = M.Map S.SockAddr PeerState
 
 type PeerDatabaseTVar = TVar (M.Map S.SockAddr PeerTVar)
 
-mkPeerState :: InfoHash -> Integer -> TChan PeerHandlerMessage -> IO (TVar PeerState)
+mkPeerState :: InfoHash -> Integer -> TChan PeerMessage -> IO (TVar PeerState)
 mkPeerState infoHash numPieces peerChan = do
     currentTime <- Time.getCurrentTime
     atomically . newTVar $ PeerState

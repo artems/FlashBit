@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module FlashBit.Peer.Handler.State
+module FlashBit.Peer.Main.State
     ( PeerState(..)
     , mkPeerState
     , isPieceSetEmpty

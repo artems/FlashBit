@@ -2,15 +2,18 @@ module FlashBit.Console
     ( runConsole
     ) where
 
+import Data.List
+import Control.Monad.Trans (lift)
+import Control.Monad.Reader (liftIO, asks)
 import Control.Concurrent
 import Control.Concurrent.STM
-import Control.Monad.Reader (asks)
-import Control.Monad.Trans (lift, liftIO)
 import System.Console.Haskeline
 
 import Process
 import Torrent
-import qualified FlashBit.TorrentManager as TorrentManager
+import FlashBit.TorrentManager.Chan (TorrentManagerMessage)
+import qualified FlashBit.TorrentManager.Chan as TorrentManager
+import FlashBit.TorrentDatabase (TorrentDatabaseTVar)
 import qualified FlashBit.TorrentDatabase as TorrentDatabase
 
 
@@ -22,8 +25,8 @@ data Command
     deriving (Eq, Show)
 
 data PConf = PConf
-    { _torrentChan     :: TChan TorrentManager.TorrentManagerMessage
-    , _torrentDatabase :: TorrentDatabase.TorrentDatabaseTVar
+    { _torrentDatabase :: TorrentDatabaseTVar
+    , _torrentChan     :: TChan TorrentManagerMessage
     }
 
 instance ProcessName PConf where
@@ -32,20 +35,18 @@ instance ProcessName PConf where
 type PState = ()
 
 
-runConsole :: TChan TorrentManager.TorrentManagerMessage
-           -> TorrentDatabase.TorrentDatabaseTVar
-           -> IO ()
-runConsole torrentChan torrentDatabase = do
-    let pconf = PConf torrentChan torrentDatabase
-        pstate = ()
+runConsole :: TorrentDatabaseTVar -> TChan TorrentManagerMessage -> IO ()
+runConsole torrentDatabase torrentChan = do
+    let pconf = PConf torrentDatabase torrentChan
+    let pstate = ()
     wrapProcess pconf pstate process
 
 process :: Process PConf PState ()
 process = runInputT defaultSettings loop
   where
     loop = do
-        uinput   <- getInputLine "% "
-        case uinput of
+        userInput <- getInputLine "% "
+        case userInput of
             Nothing    -> return ()
             Just input -> lift . receive $ parseCommand input
         loop
@@ -80,11 +81,23 @@ receive command = do
             stopProcess
 
         Show -> do
-            stats <- liftIO . atomically $ TorrentDatabase.getStatisticSTM torrentDatabase
-            liftIO . putStrLn . show $ map (\(i, s) -> (showInfoHash i, s)) stats
+            stats <- liftIO . atomically $
+                TorrentDatabase.getStatisticSTM torrentDatabase
+            liftIO . putStrLn . intercalate " " $ map showTorrent stats
 
         Help -> do
             liftIO . putStrLn $ helpMessage
 
         Unknown line -> do
             liftIO . putStrLn $ "Uknown command: " ++ show line
+  where
+    percentage :: TorrentStatus -> Integer
+    percentage stat =
+        let left = fromIntegral (_torrentLeft stat)
+            size = fromIntegral (_torrentSize stat)
+            in 100 - round (left / size * 100 :: Double)
+    showTorrent (infoHash, stat) =
+        showInfoHash infoHash ++
+        " %: " ++  show (percentage stat) ++
+        " uploaded: " ++ show (_torrentUploaded stat) ++
+        " downloaded: " ++ show (_torrentDownloaded stat)

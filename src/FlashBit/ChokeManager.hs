@@ -20,7 +20,7 @@ import System.Random.Shuffle
 import Process
 import FlashBit.PeerDatabase (PeerDatabase)
 import FlashBit.TorrentDatabase
-import FlashBit.Peer.Common
+import qualified FlashBit.Peer.Common as Peer
 import qualified FlashBit.PeerDatabase as PeerDatabase
 
 
@@ -168,12 +168,12 @@ performChokingUnchoking peerDb chain elected = do
         debugP $ "choking: " ++ show p
         let peer = fromJust $ M.lookup p peerDb
         let peerChan = PeerDatabase._peerChan peer
-        liftIO . atomically $ writeTChan peerChan $ FromChokeManager False
+        liftIO . atomically $ writeTChan peerChan $ Peer.FromChokeManager False
     unchoke p = do
         debugP $ "unchoking: " ++ show p
         let peer = fromJust $ M.lookup p peerDb
         let peerChan = PeerDatabase._peerChan peer
-        liftIO . atomically $ writeTChan peerChan $ FromChokeManager False
+        liftIO . atomically $ writeTChan peerChan $ Peer.FromChokeManager False
 
     optChoke _ []              = return ()
     optChoke 0 (sockaddr : ps) =

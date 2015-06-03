@@ -3,10 +3,10 @@ module FlashBit.FileAgent
     , FileAgentMessage(..)
     ) where
 
+import qualified Data.Array as A
+import qualified Data.ByteString as B
 import Control.Concurrent.STM
 import Control.Monad.Reader (liftIO, asks)
-import Data.Array ((!))
-import qualified Data.ByteString as B
 
 import Process
 import Torrent
@@ -33,8 +33,9 @@ type PState = ()
 
 runFileAgent :: FileRec -> InfoHash -> PieceArray -> TChan FileAgentMessage -> IO ()
 runFileAgent target infoHash pieceArray fileAgentChan = do
-    let pconf = PConf target infoHash pieceArray fileAgentChan
-    wrapProcess pconf () process
+    let pconf  = PConf target infoHash pieceArray fileAgentChan
+    let pstate = ()
+    wrapProcess pconf pstate process
 
 process :: Process PConf PState ()
 process = do
@@ -54,28 +55,24 @@ receive message = do
 
     case message of
         ReadBlock pieceNum block pieceV -> do
-            {-
-            debugP $ "reading block #" ++ show pieceNum ++ " " ++ "(" ++
-                   "offset=" ++ show (_blockOffset block) ++ ", " ++
-                   "length=" ++ show (_blockLength block) ++
-                   ")"
-            -}
-            let piece = pieceArray ! pieceNum
+            debugP $ "Reading piece #" ++ show pieceNum ++ " " ++
+                     "( offset=" ++ show (_blockOffset block) ++
+                     ", length=" ++ show (_blockLength block) ++ " " ++
+                     ")"
+            let piece = pieceArray A.! pieceNum
             pieceData <- liftIO $ readBlock target piece block
             liftIO . atomically $ putTMVar pieceV pieceData
 
         WriteBlock pieceNum block pieceData -> do
-            {-
-            debugP $ "writing block #" ++ show pieceNum ++ " " ++ "(" ++
-                   "offset=" ++ show (_blockOffset block) ++ ", " ++
-                   "length=" ++ show (_blockLength block) ++
-                   ")"
-            -}
-            let piece = pieceArray ! pieceNum
+            debugP $ "Writing piece #" ++ show pieceNum ++ " " ++
+                     "( offset=" ++ show (_blockOffset block) ++
+                     ", length=" ++ show (_blockLength block) ++ " " ++
+                     ")"
+            let piece = pieceArray A.! pieceNum
             liftIO $ writeBlock target piece block pieceData
 
         CheckPiece pieceNum checkV -> do
-            -- debugP $ "checking piece #" ++ show pieceNum
-            let piece = pieceArray ! pieceNum
+            debugP $ "Checking piece #" ++ show pieceNum
+            let piece = pieceArray A.! pieceNum
             result <- liftIO $ checkPiece target piece
             liftIO . atomically $ putTMVar checkV result

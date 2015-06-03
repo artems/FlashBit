@@ -36,7 +36,7 @@ unitTests = testGroup "Unit tests"
     [ testGroup "single"
         [ testCase "mkTorrentMeta" $ ST.withTorrentFile $ \bc ->
             mkTorrentMeta bc @?=
-                Just (TorrentMeta ST.infoHash ST.infoPieceCount ST.announceList)
+                Just (TorrentMeta ST.infoLength ST.infoHash ST.infoPieceCount ST.announceList)
         , testCase "mkPieceArray" $ ST.withTorrentFile $ \bc -> do
             mkPieceArray bc @?=
                 Just ST.pieceArray
@@ -44,7 +44,7 @@ unitTests = testGroup "Unit tests"
     , testGroup "multi"
         [ testCase "mkTorrentMeta" $ MT.withTorrentFile $ \bc ->
             mkTorrentMeta bc @?=
-                Just (TorrentMeta MT.infoHash MT.infoPieceCount MT.announceList)
+                Just (TorrentMeta MT.infoLength MT.infoHash MT.infoPieceCount MT.announceList)
         , testCase "mkPieceArray" $ MT.withTorrentFile $ \bc -> do
             mkPieceArray bc @?=
                 Just MT.pieceArray

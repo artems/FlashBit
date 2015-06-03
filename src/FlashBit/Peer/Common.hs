@@ -1,10 +1,10 @@
 module FlashBit.Peer.Common
-    ( PeerHandlerMessage(..)
+    ( PeerMessage(..)
     ) where
 
-import Torrent.Message
+import Torrent.Message as TM
 
-data PeerHandlerMessage
-    = FromPeer Message
+data PeerMessage
+    = FromPeer TM.Message
     | FromChokeManager Bool
-    | PeerTick
+    | Tick

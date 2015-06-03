@@ -2,19 +2,20 @@ module FlashBit.Listen
     ( runListen
     ) where
 
-import Control.Concurrent.STM
-import Control.Monad.Reader (liftIO, asks)
 import Data.Word (Word16)
+import Control.Monad.Reader (liftIO, asks)
+import Control.Concurrent.STM
 import qualified Network as N
 import qualified Network.Socket as S
 
 import Process
+import FlashBit.PeerManager.Chan (PeerManagerMessage)
 import qualified FlashBit.PeerManager.Chan as PeerManager
 
 
 data PConf = PConf
     { _localPort       :: Word16
-    , _peerManagerChan :: TChan PeerManager.PeerManagerMessage
+    , _peerManagerChan :: TChan PeerManagerMessage
     }
 
 instance ProcessName PConf where
@@ -23,21 +24,21 @@ instance ProcessName PConf where
 type PState = ()
 
 
-runListen :: Word16
-          -> TChan PeerManager.PeerManagerMessage 
-          -> IO ()
+runListen :: Word16 -> TChan PeerManagerMessage -> IO ()
 runListen localPort peerManagerChan = do
-    let pconf = PConf localPort peerManagerChan
-    wrapProcess pconf () process
+    let pconf  = PConf localPort peerManagerChan
+    let pstate = ()
+    wrapProcess pconf pstate process
 
 process :: Process PConf PState ()
 process = do
-    socket <- asks _localPort >>= listen
+    port   <- asks _localPort
+    socket <- listen port
     acceptLoop socket
 
 listen :: Word16 -> Process PConf PState S.Socket
 listen localPort = do
-    let port = N.PortNumber $ fromIntegral localPort
+    let port = N.PortNumber (fromIntegral localPort)
     liftIO $ N.listenOn port
 
 acceptLoop :: S.Socket -> Process PConf PState ()

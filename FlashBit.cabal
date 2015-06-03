@@ -45,10 +45,10 @@ library
     FlashBit.Peer
     FlashBit.Peer.Common
     FlashBit.Peer.Receiver
+    FlashBit.Peer.Main
+    FlashBit.Peer.Main.State
     FlashBit.Peer.Sender
     FlashBit.Peer.Sender.State
-    FlashBit.Peer.Handler
-    FlashBit.Peer.Handler.State
     FlashBit.PeerDatabase
     FlashBit.Listen
     FlashBit.Console
@@ -64,6 +64,7 @@ library
     FlashBit.PieceManager.Chan
     FlashBit.PieceManager.State
     FlashBit.TorrentManager
+    FlashBit.TorrentManager.Chan
     FlashBit.TorrentDatabase
     FlashBit.TorrentThreadDatabase
 

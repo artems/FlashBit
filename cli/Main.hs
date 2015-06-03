@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Main
     ( main
     ) where
@@ -27,6 +29,7 @@ import FlashBit.Listen as Listen
 import FlashBit.Console as Console
 import FlashBit.PeerManager as PeerManager
 import FlashBit.TorrentManager as TorrentManager
+import FlashBit.TorrentManager.Chan as TorrentManager
 import FlashBit.PeerDatabase as PeerDatabase
 import FlashBit.TorrentDatabase as TorrentDatabase
 
@@ -70,50 +73,65 @@ handleArgs args = case getOpt Permute options args of
     (o, n, []) -> return (o, n)
     (_, _, er) -> error $ concat er ++ "\n" ++ usageMessage
 
+programName :: String
+programName = "flashbit"
+
 usageMessage :: String
 usageMessage = usageInfo header options
   where
-    header = "Usage: FlashBit [option...] FILE"
+    header = "Usage: " ++ programName ++ " [OPTIONS...] FILE"
 
 printVersion :: IO ()
-printVersion = putStrLn $ "FlashBit version " ++ version ++ "\n"
+printVersion = putStrLn $ programName ++ " version " ++ version ++ "\n"
 
 setupLogging :: [Option] -> IO ()
 setupLogging opts = do
-    logStream <- streamHandler stdout DEBUG >>= \logger ->
-        return $ setFormatter logger $
+    logStream <- streamHandler stdout NOTICE >>= \logger -> return $
+        setFormatter logger $
             tfLogFormatter "%F %T" "[$time] $prio $loggername: $msg"
     when (Debug `elem` opts) $ do
         updateGlobalLogger rootLoggerName $
-            (setHandlers [logStream]) . (setLevel DEBUG)
+            (setHandlers [logStream]) . (setLevel NOTICE)
 
 mainLoop :: [Option] -> [String] -> IO ()
 mainLoop opts files = do
-    debugM "Main" "Инициализация"
+    debugM "Main" "Initialization"
     setupLogging opts
+
     stdGen <- newStdGen
     let peerId = mkPeerId stdGen protoVersion
-    debugM "Main" $ "Сгенерирован peer_id: " ++ peerId
+    debugM "Main" $ "Generated peer_id: " ++ peerId
 
-    torrentChan      <- newTChanIO
-    peerManagerChan  <- newTChanIO
-    peerDatabase     <- atomically mkPeerDatabaseSTM
-    torrentDatabase  <- atomically mkTorrentDatabaseSTM
+    peerManagerChan    <- newTChanIO
+    torrentManagerChan <- newTChanIO
+    peerDatabase       <- atomically mkPeerDatabaseSTM
+    torrentDatabase    <- atomically mkTorrentDatabaseSTM
 
-    let addTorrent = atomically . writeTChan torrentChan . TorrentManager.AddTorrent
-    forM_ files addTorrent
+    forM_ files (addTorrent torrentManagerChan)
 
     group <- initGroup
     let actions =
-            [ runConsole torrentChan torrentDatabase
-            , runPeerManager peerId peerDatabase torrentDatabase peerManagerChan
-            , runTorrentManager peerId peerDatabase torrentDatabase peerManagerChan torrentChan
-            , runListen defaultPort peerManagerChan
+            [ runListen defaultPort peerManagerChan
+            , runConsole torrentDatabase torrentManagerChan
+            , runPeerManager
+                peerId
+                peerDatabase
+                torrentDatabase -- used for searching info_hash after handshake
+                peerManagerChan
+            , runTorrentManager
+                peerId          -- used by a tracker
+                peerDatabase    -- used by a choke manager
+                torrentDatabase
+                peerManagerChan -- used for sending peers from tracker
+                torrentManagerChan
             ]
-    runGroup group actions >>= exitStatus
+    runGroup group actions >>= exit
 
-    debugM "Main" "Выход"
+    debugM "Main" "Exit"
+  where
+    addTorrent chan torrentFile = atomically . writeTChan chan $
+        TorrentManager.AddTorrent torrentFile "." True
 
-exitStatus :: Either SomeException () -> IO ()
-exitStatus (Left (SomeException e)) = print e
-exitStatus _                        = return ()
+exit :: Either SomeException () -> IO ()
+exit (Left (SomeException e)) = print e
+exit _                        = return ()
