@@ -13,7 +13,7 @@ data Peer = Peer S.SockAddr
 
 type PeerId = String
 
-data PeerStatus = Seeding | Leeching
+data PeerStatus = Seeder | Leecher
     deriving (Eq, Show)
 
 data Capability = Fast | Extended

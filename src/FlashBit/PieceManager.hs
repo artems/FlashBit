@@ -2,7 +2,6 @@ module FlashBit.PieceManager
     ( runPieceManager
     ) where
 
-import qualified Data.PieceSet as PS
 import qualified Data.ByteString as B
 import Control.Concurrent.STM
 import Control.Monad.Reader (when, liftIO, asks)
@@ -70,8 +69,7 @@ wait = do
 receive :: PieceManagerMessage -> Process PConf PState ()
 receive message = do
     case message of
-        GrabBlock num peerPieces blockV -> do
-            let pieces = PS.toSet peerPieces
+        GrabBlock num pieces blockV -> do
             blocks <- grabBlocks num pieces
             liftIO . atomically $ putTMVar blockV blocks
 
@@ -82,6 +80,9 @@ receive message = do
         PeerHave pieces interestV -> do
             interested <- markPeerHave pieces
             liftIO . atomically $ putTMVar interestV interested
+
+        PeerUnhave pieces -> do
+            markPeerUnhave pieces
 
         StoreBlock pieceNum block pieceData -> do
             torrentTV <- asks _torrentTV

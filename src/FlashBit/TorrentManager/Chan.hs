@@ -2,9 +2,11 @@ module FlashBit.TorrentManager.Chan
     ( TorrentManagerMessage(..)
     ) where
 
-import Control.Concurrent
+import Torrent
+import Torrent.File
 
 data TorrentManagerMessage
-    = AddTorrent FilePath FilePath Bool
-    | RemoveTorrent FilePath
-    | Shutdown (MVar ())
+    = AddTorrent Torrent (FileRec, PieceHaveMap) Bool
+    | StopTorrent InfoHash
+    | StartTorrent InfoHash
+    | RemoveTorrent InfoHash

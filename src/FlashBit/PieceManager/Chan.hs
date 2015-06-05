@@ -4,15 +4,16 @@ module FlashBit.PieceManager.Chan
     ) where
 
 import Control.Concurrent.STM
-import qualified Data.PieceSet as PS
+import qualified Data.Set as S
 import qualified Data.ByteString as B
 
 import Torrent
 
 data PieceManagerMessage
-    = GrabBlock Integer PS.PieceSet (TMVar (TorrentPieceMode, [(PieceNum, PieceBlock)]))
+    = GrabBlock Integer (S.Set PieceNum) (TMVar (PieceMode, [(PieceNum, PieceBlock)]))
     | GetCompleted (TMVar [PieceNum])
     | PeerHave [PieceNum] (TMVar [PieceNum])
+    | PeerUnhave [PieceNum]
     | StoreBlock PieceNum PieceBlock B.ByteString
     | PutbackBlock [(PieceNum, PieceBlock)]
 

@@ -31,7 +31,9 @@ instance ProcessName PConf where
 type PState = ()
 
 
-runFileAgent :: FileRec -> InfoHash -> PieceArray -> TChan FileAgentMessage -> IO ()
+runFileAgent :: FileRec -> InfoHash -> PieceArray
+             -> TChan FileAgentMessage
+             -> IO ()
 runFileAgent target infoHash pieceArray fileAgentChan = do
     let pconf  = PConf target infoHash pieceArray fileAgentChan
     let pstate = ()

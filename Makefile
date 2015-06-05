@@ -10,11 +10,11 @@ sandbox:
 
 .PHONY: deps
 deps: sandbox
-	@$(CABAL) install --only-dependencies
+	@$(CABAL) install --only-dependencies --enable-library-profiling
 
 .PHONY: conf
 conf: deps
-	@$(CABAL) configure
+	@$(CABAL) configure --enable-library-profiling --enable-executable-profiling
 
 .PHONY: build
 build: conf
@@ -30,7 +30,7 @@ test: build
 
 .PHONY: run
 run: build
-	@$(CABAL) run -- -d tests/_data/ubuntu-13.10-server-amd64.iso.torrent
+	@$(CABAL) run -- -d
 
 .PHONY: clean
 clean:

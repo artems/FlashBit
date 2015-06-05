@@ -18,3 +18,4 @@ data PeerEventMessage
 data PeerManagerMessage
     = NewConnection (S.Socket, S.SockAddr)
     | NewTrackerPeers InfoHash [Peer]
+    | StopTorrentPeers InfoHash

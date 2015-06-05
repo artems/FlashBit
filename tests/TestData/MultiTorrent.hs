@@ -103,6 +103,11 @@ pieceArray = A.array (0, 4)
     , (4, PieceRec 131072 10191 piece4_cs)
     ]
 
+torrent :: Torrent
+torrent = Torrent
+    infoName infoLength infoHash infoFiles infoPieceCount
+    announceList comment (Just creationDate) pieceArray
+
 withTorrentFile :: (BCode.BCode -> IO a) -> IO a
 withTorrentFile = TD.withTorrentFile "tests/_data/kitten.torrent"
 

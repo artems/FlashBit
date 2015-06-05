@@ -36,10 +36,8 @@ mkPeerSenderState timerId = PeerSenderState
     , _keepAliveTimer = timerId
     }
 
-
 pushQ :: QueueType -> PeerSenderMonad ()
 pushQ a = S.modify $ \st -> st { _queue =  a S.<| (_queue st) }
-
 
 firstQ :: PeerSenderMonad (Maybe QueueType)
 firstQ = do
@@ -50,7 +48,6 @@ firstQ = do
         queue' S.:> message -> do
             S.modify $ \st -> st { _queue = queue' }
             return (Just message)
-
 
 modifyQ :: (S.Seq QueueType -> S.Seq QueueType) -> PeerSenderMonad ()
 modifyQ func = S.modify $ \st -> st { _queue = func (_queue st) }

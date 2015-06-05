@@ -17,6 +17,7 @@ import qualified Network.Socket as S
 import System.Random
 import System.Random.Shuffle
 
+import Torrent
 import Process
 import FlashBit.PeerDatabase (PeerDatabase)
 import FlashBit.TorrentDatabase
@@ -25,7 +26,8 @@ import qualified FlashBit.PeerDatabase as PeerDatabase
 
 
 data PConf = PConf
-    { _baseSlots        :: Int -- Кол-во активных соединений
+    { _infoHash         :: InfoHash
+    , _baseSlots        :: Int -- Кол-во активных соединений
     , _optimisticSlots  :: Int
     , _roundTime        :: Int -- Кол-во секунд до след. раунда
     , _peerDatabase     :: PeerDatabase.PeerDatabaseTVar
@@ -34,18 +36,19 @@ data PConf = PConf
     }
 
 instance ProcessName PConf where
-    processName _ = "ChokeManager"
+    processName pconf = "ChokeManager [" ++ showInfoHash (_infoHash pconf) ++ "]"
 
 type PState = ()
 
 data ChokeManagerMessage = Tick
 
-runChokeManager :: PeerDatabase.PeerDatabaseTVar
+runChokeManager :: InfoHash
+                -> PeerDatabase.PeerDatabaseTVar
                 -> TorrentTVar
                 -> TChan ChokeManagerMessage
                 -> IO ()
-runChokeManager peerDatabase torrentTV chokeManagerChan = do
-    let pconf  = PConf 2 2 10 peerDatabase torrentTV chokeManagerChan
+runChokeManager infoHash peerDatabase torrentTV chokeManagerChan = do
+    let pconf  = PConf infoHash 2 2 10 peerDatabase torrentTV chokeManagerChan
         pstate = ()
     wrapProcess pconf pstate (setNextTick >> process)
 
@@ -78,8 +81,9 @@ setNextTick = do
 
 getPeerDatabase :: Process PConf PState PeerDatabase
 getPeerDatabase = do
+    infoHash     <- R.asks _infoHash
     peerDatabase <- R.asks _peerDatabase
-    liftIO $ PeerDatabase.freeze peerDatabase
+    liftIO $ PeerDatabase.freeze peerDatabase infoHash
 
 getPeerChain :: PeerDatabase -> Process PConf PState [S.SockAddr]
 getPeerChain peerDatabase = do

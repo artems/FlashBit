@@ -8,8 +8,8 @@ module FlashBit.PeerDatabase
     , freeze
     , addPeerSTM
     , removePeerSTM
+    , clearSTM
     , sizeSTM
-    , isSeeder
     , isSeederSTM
     , isWeChokingSTM
     , isChokingUsSTM
@@ -17,6 +17,7 @@ module FlashBit.PeerDatabase
     , getSpeedSTM
     , getNumPiecesSTM
     , getPeerPiecesSTM
+    , getPeerBlockQueue
     , isPieceSetEmptySTM
     , numToQueueSTM
     , queuePiecesSTM
@@ -32,9 +33,7 @@ module FlashBit.PeerDatabase
     , receiveHaveSTM
     , receiveBitfieldSTM
     , receivePieceSTM
-    , incUploadCounterSTM
-    , incDownloadCounterSTM
-    , extractRateSTM
+    , updateRateSTM
     ) where
 
 import Control.Monad
@@ -51,6 +50,7 @@ import qualified Network.Socket as S
 
 import Torrent
 import Torrent.Message
+import ProcessGroup
 
 import FlashBit.Peer.Common
 
@@ -72,16 +72,17 @@ data PeerState = PeerState
     , _missingPieces        :: Integer
     , _peerChan             :: TChan PeerMessage
     , _infoHash             :: InfoHash
+    , _peerGroup            :: ProcessGroup
     }
 
 type PeerTVar = TVar PeerState
 
 type PeerDatabase = M.Map S.SockAddr PeerState
 
-type PeerDatabaseTVar = TVar (M.Map S.SockAddr PeerTVar)
+type PeerDatabaseTVar = TVar (M.Map InfoHash (M.Map S.SockAddr PeerTVar))
 
-mkPeerState :: InfoHash -> Integer -> TChan PeerMessage -> IO (TVar PeerState)
-mkPeerState infoHash numPieces peerChan = do
+mkPeerState :: ProcessGroup -> InfoHash -> Integer -> TChan PeerMessage -> IO (TVar PeerState)
+mkPeerState peerGroup infoHash numPieces peerChan = do
     currentTime <- Time.getCurrentTime
     atomically . newTVar $ PeerState
         { _weChokePeer          = True
@@ -100,9 +101,10 @@ mkPeerState infoHash numPieces peerChan = do
         , _missingPieces        = numPieces
         , _peerChan             = peerChan
         , _infoHash             = infoHash
+        , _peerGroup            = peerGroup
         }
 
-mkPeerDatabase :: M.Map S.SockAddr PeerTVar
+mkPeerDatabase :: M.Map InfoHash (M.Map S.SockAddr PeerTVar)
 mkPeerDatabase = M.empty
 
 mkPeerDatabaseSTM :: STM PeerDatabaseTVar
@@ -122,24 +124,38 @@ modify f tv = do
 modify' :: TVar a -> (a -> a) -> STM ()
 modify' = flip modify
 
-freeze :: PeerDatabaseTVar -> IO PeerDatabase
-freeze peerDatabaseTV = do
-    peerDatabase <- atomically $ readTVar peerDatabaseTV
+freeze :: PeerDatabaseTVar -> InfoHash -> IO PeerDatabase
+freeze peerDatabaseTV infoHash = do
+    peerDatabase <- atomically $ do
+        db <- readTVar peerDatabaseTV
+        case M.lookup infoHash db of
+            Just peers -> return peers
+            Nothing    -> return M.empty
     T.mapM getPeer peerDatabase
   where
     getPeer peerTV = atomically $ readTVar peerTV
 
-addPeerSTM :: PeerDatabaseTVar -> PeerTVar -> S.SockAddr -> STM ()
-addPeerSTM tv peerTV sockAddr = modify' tv $ M.insert sockAddr peerTV
+addPeerSTM :: PeerDatabaseTVar -> PeerTVar -> InfoHash -> S.SockAddr -> STM ()
+addPeerSTM tv peerTV infoHash sockAddr =
+    modify' tv $ M.alter alter' infoHash
+  where
+    alter' Nothing  = Just (M.singleton sockAddr peerTV)
+    alter' (Just m) = Just (M.insert sockAddr peerTV m)
 
-removePeerSTM :: PeerDatabaseTVar -> S.SockAddr -> STM ()
-removePeerSTM tv sockAddr = modify' tv $ M.delete sockAddr
+removePeerSTM :: PeerDatabaseTVar -> InfoHash -> S.SockAddr -> STM ()
+removePeerSTM tv infoHash sockAddr =
+    modify' tv $ M.alter alter' infoHash
+  where
+    alter' Nothing  = Nothing
+    alter' (Just m) = Just (M.delete sockAddr m)
+
+clearSTM :: PeerDatabaseTVar -> InfoHash -> STM ()
+clearSTM tv infoHash = modify' tv $ M.alter (const Nothing) infoHash
 
 sizeSTM :: PeerDatabaseTVar -> STM Integer
-sizeSTM tv = (fromIntegral . M.size) `fmap` get tv
-
-isSeeder :: PeerState -> Bool
-isSeeder peer = _missingPieces peer == 0
+sizeSTM tv = M.fold count 0 `fmap` get tv
+  where
+    count m acc = acc + fromIntegral (M.size m)
 
 isSeederSTM :: PeerTVar -> STM Bool
 isSeederSTM tv = (== 0) `fmap` gets _missingPieces tv
@@ -162,8 +178,11 @@ getSpeedSTM tv = do
 getNumPiecesSTM :: PeerTVar -> STM Integer
 getNumPiecesSTM = gets _numPieces
 
-getPeerPiecesSTM :: PeerTVar -> STM PS.PieceSet
-getPeerPiecesSTM = gets _peerPieces
+getPeerPiecesSTM :: PeerTVar -> STM (S.Set PieceNum)
+getPeerPiecesSTM tv = PS.toSet `fmap` gets _peerPieces tv
+
+getPeerBlockQueue :: PeerTVar -> STM [(PieceNum, PieceBlock)]
+getPeerBlockQueue tv = S.toList `fmap` gets _blockQueue tv
 
 isPieceSetEmptySTM :: PeerTVar -> STM Bool
 isPieceSetEmptySTM tv = PS.null `fmap` gets _peerPieces tv
@@ -286,24 +305,16 @@ checkWatermarkSTM tv = do
         hiMark = if endgame then endgameHiMark else normalHiMark
     return $ if (size < loMark) then (hiMark - size) else 0
 
-incUploadCounterSTM :: Integer -> PeerTVar -> STM ()
-incUploadCounterSTM num =
-    modify $ \s -> s { _upRate = updateBytes num (_upRate s) }
+updateRateSTM :: PeerTVar -> Time.UTCTime -> Integer -> Integer -> STM ()
+updateRateSTM tv currentTime upload download = do
+    upRate <- updateBytes upload   `fmap` gets _upRate tv
+    dnRate <- updateBytes download `fmap` gets _dnRate tv
 
-incDownloadCounterSTM :: Integer -> PeerTVar -> STM ()
-incDownloadCounterSTM num =
-    modify $ \s -> s { _dnRate = updateBytes num (_dnRate s) }
-
-extractRateSTM :: Time.UTCTime -> PeerTVar -> STM ((Integer, Double), (Integer, Double))
-extractRateSTM currentTime tv = do
-    upRate <- gets _upRate tv
-    dnRate <- gets _dnRate tv
-    let (upload, upSpeed,  upRate')  = extractRate currentTime upRate
-        (download, dnSpeed, dnRate') = extractRate currentTime dnRate
+    let (_upload, upSpeed,  upRate')  = extractRate currentTime upRate
+        (_download, dnSpeed, dnRate') = extractRate currentTime dnRate
     modify' tv $ \s -> s 
         { _upRate  = upRate'
         , _dnRate  = dnRate'
         , _upSpeed = upSpeed
         , _dnSpeed = dnSpeed
         }
-    return ((upload, upSpeed), (download, dnSpeed))

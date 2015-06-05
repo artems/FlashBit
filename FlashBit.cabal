@@ -40,18 +40,19 @@ library
     Torrent.File
     Torrent.Message
     Torrent.Announce
+    Torrent.Exception
     Process
     ProcessGroup
+    FlashBit.API
+    FlashBit.Config
     FlashBit.Peer
     FlashBit.Peer.Common
     FlashBit.Peer.Receiver
     FlashBit.Peer.Main
-    FlashBit.Peer.Main.State
     FlashBit.Peer.Sender
     FlashBit.Peer.Sender.State
     FlashBit.PeerDatabase
     FlashBit.Listen
-    FlashBit.Console
     FlashBit.Tracker
     FlashBit.Tracker.Chan
     FlashBit.Tracker.State
@@ -78,17 +79,17 @@ library
     cryptohash  == 0.11.*,
     directory   == 1.*,
     filepath    == 1.*,
-    HTTP        == 4000.2.10,
+    HTTP        == 4000.2.*,
     haskeline   == 0.7.*,
     hslogger    == 1.2.*,
-    mtl         == 2.1.*,
+    mtl         == 2.2.*,
     network     == 2.4.*,
     PSQueue     == 1.1,
     parsec      == 3.*,
     random      == 1.*,
     random-shuffle == 0.0.4,
     stm         == 2.*,
-    time        == 1.4.*
+    time        == 1.5.*
 
   default-language: Haskell2010
 
@@ -98,6 +99,7 @@ test-suite flashbit-tests
   main-is:          Main.hs
 
   hs-source-dirs:   tests
+
   ghc-options:      -Wall
 
   build-depends:
@@ -111,12 +113,12 @@ test-suite flashbit-tests
     bytestring  == 0.10.*,
     containers  == 0.5.*,
     directory   == 1.*,
-    mtl         == 2.1.*,
+    mtl         == 2.2.*,
     network     == 2.4.*,
     parsec      == 3.*,
     random      == 1.*,
     text        == 1.*,
-    time        == 1.4.*
+    time        == 1.5.*
 
   default-language:    Haskell2010
 
@@ -124,6 +126,8 @@ executable flashbit-cli
   main-is:          Main.hs
 
   hs-source-dirs:   cli
+
+  -- ghc-options: -fprof-auto -auto-all -caf-all "-with-rtsopts=-hc -p -i0.001"
 
   -- other-modules:
 
@@ -133,8 +137,9 @@ executable flashbit-cli
   build-depends:
     FlashBit,
     base        == 4.*,
+    haskeline   == 0.7.*,
     hslogger    == 1.2.*,
-    mtl         == 2.1.*,
+    mtl         == 2.2.*,
     random      == 1.*,
     stm         == 2.*
 

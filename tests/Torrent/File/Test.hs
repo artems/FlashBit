@@ -72,14 +72,14 @@ testCheckTorrent = testGroup "checkTorrent"
 
 testOpenTarget :: TestTree
 testOpenTarget = testCase "openTarget" $ do
-    bc <- openTorrent "tests/_data/cat.torrent"
-    (_files, pieceArray, _pieceHaveMap) <- openTarget "tests/_data/incomplete/" bc
-    pieceArray @?= ST.pieceArray
+    torrent <- openTorrent "tests/_data/cat.torrent"
+    (_files, _pieceHaveMap) <- openTarget torrent "tests/_data/incomplete/"
+    return ()
 
 testBytesLeft :: TestTree
 testBytesLeft = testCase "bytesLeft" $ do
     let pieceHaveMap = M.fromList [(0, False), (1, True), (2, True)]
-    bytesLeft ST.pieceArray pieceHaveMap @?= 16384
+    torrentBytesLeft ST.pieceArray pieceHaveMap @?= 16384
 
 withCompleteTorrent :: (FileRec -> IO a) -> IO a
 withCompleteTorrent action = do

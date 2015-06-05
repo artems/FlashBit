@@ -2,6 +2,7 @@ module Torrent.Piece
     ( PieceRec(..)
     , PieceNum
     , PieceSize
+    , PieceMode(..)
     , PieceBlock(..)
     , PieceBlockOffset
     , PieceBlockLength
@@ -9,7 +10,7 @@ module Torrent.Piece
     , PieceHaveMap
     ) where
 
-import Data.Array (Array)
+import           Data.Array (Array)
 import qualified Data.Map as M
 import qualified Data.ByteString as B
 
@@ -23,6 +24,8 @@ data PieceRec = PieceRec
 type PieceNum = Integer
 
 type PieceSize = Integer
+
+data PieceMode = Leech | Endgame
 
 data PieceBlock = PieceBlock
     { _blockOffset :: PieceBlockOffset

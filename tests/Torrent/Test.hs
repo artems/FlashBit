@@ -34,17 +34,15 @@ properties = testGroup "Properties"
 unitTests :: TestTree
 unitTests = testGroup "Unit tests"
     [ testGroup "single"
-        [ testCase "mkTorrentMeta" $ ST.withTorrentFile $ \bc ->
-            mkTorrentMeta bc @?=
-                Just (TorrentMeta ST.infoLength ST.infoHash ST.infoPieceCount ST.announceList)
+        [ testCase "mkTorrent" $ ST.withTorrentFile $ \bc ->
+            mkTorrent bc @?= Just (ST.torrent)
         , testCase "mkPieceArray" $ ST.withTorrentFile $ \bc -> do
             mkPieceArray bc @?=
                 Just ST.pieceArray
         ]
     , testGroup "multi"
-        [ testCase "mkTorrentMeta" $ MT.withTorrentFile $ \bc ->
-            mkTorrentMeta bc @?=
-                Just (TorrentMeta MT.infoLength MT.infoHash MT.infoPieceCount MT.announceList)
+        [ testCase "mkTorrent" $ MT.withTorrentFile $ \bc ->
+            mkTorrent bc @?= Just (MT.torrent)
         , testCase "mkPieceArray" $ MT.withTorrentFile $ \bc -> do
             mkPieceArray bc @?=
                 Just MT.pieceArray

@@ -25,14 +25,12 @@ instance ProcessName PConf where
 type PState = ()
 
 
-runPeerReceiver :: String -> S.Socket -> B.ByteString
-                -> TVar Integer
+runPeerReceiver :: String -> S.Socket -> B.ByteString -> TVar Integer
                 -> TChan PeerMessage
                 -> IO ()
 runPeerReceiver prefix socket remain receiveTV peerChan = do
     let pconf = PConf prefix socket receiveTV peerChan
     wrapProcess pconf () (receive remain)
-
 
 receive :: B.ByteString -> Process PConf PState ()
 receive remain = do

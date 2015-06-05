@@ -5,7 +5,7 @@ module FlashBit.TorrentThreadDatabase
     , removeTorrentThreadSTM
     , getTorrentThreadSTM
     , getTorrentTrackerChanSTM
-    , getAllTorrentThreadsSTM
+    , getThreadsSTM
     ) where
 
 import qualified Data.Map as M
@@ -66,5 +66,5 @@ getTorrentThreadSTM tv infoHash = getTorrent tv infoHash _thread
 getTorrentTrackerChanSTM :: TorrentThreadDatabaseTVar -> InfoHash -> STM (Maybe (TChan TrackerMessage))
 getTorrentTrackerChanSTM tv infoHash = getTorrent tv infoHash _trackerChan
 
-getAllTorrentThreadsSTM :: TorrentThreadDatabaseTVar -> STM [(InfoHash, (ProcessGroup, MVar ()))]
-getAllTorrentThreadsSTM tv = (map (\(i, t) -> (i, _thread t)) . M.assocs) `fmap` readTVar tv
+getThreadsSTM :: TorrentThreadDatabaseTVar -> STM [(InfoHash, (ProcessGroup, MVar ()))]
+getThreadsSTM tv = (map (\(i, t) -> (i, _thread t)) . M.assocs) `fmap` readTVar tv

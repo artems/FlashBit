@@ -5,6 +5,7 @@ module FlashBit.Listen
 import Data.Word (Word16)
 import Control.Monad.Reader (liftIO, asks)
 import Control.Concurrent.STM
+import Control.Exception (finally)
 import qualified Network as N
 import qualified Network.Socket as S
 
@@ -33,18 +34,18 @@ runListen localPort peerManagerChan = do
 process :: Process PConf PState ()
 process = do
     port   <- asks _localPort
+    chan   <- asks _peerManagerChan
     socket <- listen port
-    acceptLoop socket
+    liftIO $ finally (accept socket chan) (S.sClose socket)
 
 listen :: Word16 -> Process PConf PState S.Socket
 listen localPort = do
     let port = N.PortNumber (fromIntegral localPort)
     liftIO $ N.listenOn port
 
-acceptLoop :: S.Socket -> Process PConf PState ()
-acceptLoop socket = do
-    chan <- asks _peerManagerChan
-    conn <- liftIO $ S.accept socket
+accept :: S.Socket -> TChan PeerManagerMessage -> IO ()
+accept socket chan = do
+    conn <- S.accept socket
     let message = PeerManager.NewConnection conn
-    liftIO . atomically $ writeTChan chan message
-    acceptLoop socket
+    atomically $ writeTChan chan message
+    accept socket chan

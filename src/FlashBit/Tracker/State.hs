@@ -11,6 +11,7 @@ module FlashBit.Tracker.State
     , trackerEventTransition
     , trackerUpdateTimer
     , trackerCheckTick
+    , getTrackerStatus
     ) where
 
 import qualified Control.Monad.State as S
@@ -73,3 +74,6 @@ trackerCheckTick x = do
     tick   <- S.gets _nextTick
     status <- S.gets _trackerStatus
     return (status == Running && tick == x)
+
+getTrackerStatus :: TrackerMonad TrackerStatus
+getTrackerStatus = S.gets _trackerStatus

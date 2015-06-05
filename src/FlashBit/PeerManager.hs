@@ -7,8 +7,11 @@ import Control.Concurrent.STM
 import Control.Monad.Reader (when, liftIO, asks)
 import qualified Network.Socket as S
 
-import Process
+import qualified Data.Map as M
+
 import Torrent
+import Process
+import ProcessGroup
 import FlashBit.PeerManager.Chan
 import FlashBit.PeerManager.State
 import qualified FlashBit.Peer as Peer
@@ -55,55 +58,63 @@ wait = do
         (readTChan peerManagerChan >>= return . Right)
 
 receive :: Either PeerEventMessage PeerManagerMessage -> Process PConf PState ()
-receive message = do
-    case message of
-        Left event -> peerEvent event
-        Right event -> peerManagerEvent event
+receive message = case message of
+    Left event  -> peerEvent event
+    Right event -> peerManagerEvent event
 
 peerEvent :: PeerEventMessage -> Process PConf PState ()
 peerEvent message = do
     peerDb <- asks _peerDb
 
     case message of
-        Connected _infoHash sockaddr peerTV -> do
-            debugP $ "Подключен пир (" ++ show sockaddr ++ ")"
-            liftIO . atomically $ PeerDatabase.addPeerSTM peerDb peerTV sockaddr
+        Connected infoHash sockaddr peerTV -> do
+            noticeP $ "Подключен пир (" ++ show sockaddr ++ ")"
+            liftIO . atomically $ PeerDatabase.addPeerSTM peerDb peerTV infoHash sockaddr
+            removePendingPeer sockaddr
 
-        Disconnected _infoHash sockaddr -> do
-            debugP $ "Пир отсоединился (" ++ show sockaddr ++ ")"
-            liftIO . atomically $ PeerDatabase.removePeerSTM peerDb sockaddr
+        Disconnected infoHash sockaddr -> do
+            noticeP $ "Пир отсоединился (" ++ show sockaddr ++ ")"
+            liftIO . atomically $ PeerDatabase.removePeerSTM peerDb infoHash sockaddr
+            removePendingPeer sockaddr
             fillupPeers
 
         ConnectException sockaddr err -> do
-            debugP $ "Не удалось соединится с пиром (" ++ show sockaddr ++ "): " ++ show err
+            noticeP $ "Не удалось соединится с пиром (" ++ show sockaddr ++ "): " ++ show err
+            removePendingPeer sockaddr
             fillupPeers
 
 peerManagerEvent :: PeerManagerMessage -> Process PConf PState ()
 peerManagerEvent message =
     case message of
         NewConnection conn@(_socket, sockaddr) -> do
-            debugP $ "Новый пир (" ++ show sockaddr ++ ")"
+            noticeP $ "Новый пир (" ++ show sockaddr ++ ")"
             count     <- numOfActivePeers
             canAccept <- mayIAcceptIncomingPeer count
             if canAccept
                 then do
-                    debugP $ "Добавляем пир (" ++ show sockaddr ++ ")"
+                    noticeP $ "Добавляем пир (" ++ show sockaddr ++ ")"
                     acceptPeer conn
                 else do
-                    debugP $ "Закрываем соединение (" ++ show sockaddr ++ "), слишком много пиров"
+                    noticeP $ "Закрываем соединение (" ++ show sockaddr ++ "), слишком много пиров"
                     closeConnection conn
 
         NewTrackerPeers infoHash peers -> do
-            debugP $ "Добавляем новых " ++ show (length peers) ++ " пиров в очередь"
+            noticeP $ "Добавляем новых " ++ show (length peers) ++ " пиров в очередь"
             enqueuePeers infoHash peers
             fillupPeers
+
+        StopTorrentPeers infoHash -> do
+            noticeP $ "Останавливаем пиры " ++ showInfoHash infoHash
+            stopTorrentPeers infoHash
 
 fillupPeers :: Process PConf PState ()
 fillupPeers = do
     count <- numOfActivePeers
     peers <- nextPackOfPeers count
+    pending <- pendingPeersSize
     when (length peers > 0) $ do
-        debugP $ "Подключаем дополнительно " ++ show (length peers) ++ " пиров"
+        noticeP $ "Подключаем дополнительно " ++ show (length peers) ++ " пиров"
+        noticeP $ "Активных=" ++ show count ++ " из них в ожидании=" ++ show pending
         mapM_ connectToPeer peers
 
 acceptPeer :: (S.Socket, S.SockAddr) -> Process PConf PState ()
@@ -119,6 +130,7 @@ addConnection sockaddr sockOrInfo = do
     peerId        <- asks _peerId
     torrentDb     <- asks _torrentDb
     peerEventChan <- asks _peerEventChan
+    addPendingPeer sockaddr
     _threadId     <- liftIO . forkIO $
         Peer.runPeer sockaddr peerId sockOrInfo torrentDb peerEventChan
     return ()
@@ -128,6 +140,15 @@ closeConnection (socket, _sockaddr) = liftIO $ S.sClose socket
 
 numOfActivePeers :: Process PConf PState Integer
 numOfActivePeers = do
-    peerDb <- asks _peerDb
-    count  <- liftIO . atomically $ PeerDatabase.sizeSTM peerDb
-    return count
+    peerDb  <- asks _peerDb
+    active  <- liftIO . atomically $ PeerDatabase.sizeSTM peerDb
+    pending <- pendingPeersSize
+    return (active + pending)
+
+stopTorrentPeers :: InfoHash -> Process PConf PState ()
+stopTorrentPeers infoHash = do
+    peerDb  <- asks _peerDb
+    peerMap <- liftIO $ PeerDatabase.freeze peerDb infoHash
+    let groups = map PeerDatabase._peerGroup $ M.elems peerMap
+    liftIO . mapM_ stopGroup $ groups
+    clearQueue infoHash

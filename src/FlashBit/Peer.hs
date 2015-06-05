@@ -4,16 +4,16 @@ module FlashBit.Peer
     ( runPeer
     ) where
 
+import qualified Data.ByteString as B
 import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad.Reader (liftIO, asks)
-import qualified Data.ByteString as B
 import qualified Network.Socket as S
 import qualified Network.Socket.ByteString as SB
 
+import Torrent
 import Process
 import ProcessGroup
-import Torrent
 import qualified Torrent.Message as TM
 import FlashBit.Peer.Main
 import FlashBit.Peer.Sender
@@ -65,21 +65,25 @@ connect infoHash = do
         socket <- S.socket S.AF_INET S.Stream S.defaultProtocol
         S.connect socket sockaddr
         sended <- sendHandshake socket infoHash peerId
+        -- TODO check info_hash from handshake
         (_, remain, consumed) <- receiveHandshake socket
         return (socket, infoHash, remain, consumed, sended)
     startPeer result
 
-startPeer :: Either SomeException (S.Socket, InfoHash, B.ByteString, Integer, Integer)
+startPeer :: Either
+                SomeException
+                (S.Socket, InfoHash, B.ByteString, Integer, Integer)
           -> Process PConf PState ()
 startPeer (Left e) = sendException e
 startPeer (Right (socket, infoHash, remain, consumed, sended)) = do
     torrentDb <- asks _torrentDb
-    mbTorrent <- liftIO . atomically $ TorrentDatabase.getTorrentSTM torrentDb infoHash
+    mbTorrent <- liftIO . atomically $
+        TorrentDatabase.getTorrentSTM torrentDb infoHash
     case mbTorrent of
         Just torrent ->
             runPeerGroup socket infoHash torrent remain consumed sended
         Nothing      ->
-            sendException $ toException (userError "torrent not found")
+            sendException . toException . userError $ "torrent not found"
 
 sendException :: SomeException -> Process PConf PState ()
 sendException e = do
@@ -101,7 +105,10 @@ receiveHandshake socket = do
     let (TM.Handshake _peerId infoHash _capabilities) = handshake
     return (infoHash, remain, consumed)
 
-runPeerGroup :: S.Socket -> InfoHash -> TorrentDatabase.TorrentTVar -> B.ByteString
+runPeerGroup :: S.Socket
+             -> InfoHash
+             -> TorrentDatabase.TorrentTVar
+             -> B.ByteString
              -> Integer
              -> Integer
              -> Process PConf PState ()
@@ -117,34 +124,27 @@ runPeerGroup socket infoHash torrentTV remain received sended = do
 
     let prefix             = show sockaddr
     let channel            = TorrentDatabase._torrentChannel torrent
-    let pieceArray         = TorrentDatabase._torrentPieceArray torrent
+    let pieceArray         =
+            Torrent._torrentPieceArray . TorrentDatabase._torrent $ torrent
+    let numPieces          = pieceArraySize pieceArray
     let fileAgentChan      = TorrentDatabase._torrentFileAgentChan channel
-    let pieceManagerChan   = TorrentDatabase._torrentPieceManagerChan channel
-    let pieceBroadcastChan = TorrentDatabase._torrentPieceBroadcastChan channel
-    pieceBroadcastChanDup  <- liftIO . atomically $ dupTChan pieceBroadcastChan
-    peerState              <- liftIO $ mkPeerState infoHash (pieceArraySize pieceArray) peerChan
 
-    group <- liftIO initGroup
+    peerGroup <- liftIO initGroup
+    peerTV    <- liftIO $ mkPeerState peerGroup infoHash numPieces peerChan
     let actions =
-            [ runPeerMain prefix infoHash pieceArray sendTV receiveTV
-                peerState
-                sendChan
-                peerChan
-                torrentTV
-                pieceManagerChan
-                pieceBroadcastChanDup
+            [ runPeerMain prefix sendTV receiveTV peerTV torrentTV sendChan peerChan
             , runPeerSender prefix socket sendTV fileAgentChan sendChan
             , runPeerReceiver prefix socket remain receiveTV peerChan
             ]
-    result <- liftIO $ bracket_
-        (connect' sockaddr peerState peerEventChan)
+    _result <- liftIO $ bracket_
+        (connect' sockaddr peerTV peerEventChan)
         (disconnect' sockaddr peerEventChan >> S.sClose socket)
-        (runGroup group actions)
-    case result of
-        Left (e :: SomeException) -> liftIO $ throwIO e
-        Right ()                  -> error "Unexpected termination"
+        (runGroup peerGroup actions)
+    return ()
   where
     connect' sockaddr tv chan = do
-        atomically $ writeTChan chan $ PeerManager.Connected infoHash sockaddr tv
+        atomically . writeTChan chan $
+            PeerManager.Connected infoHash sockaddr tv
     disconnect' sockaddr chan = do
-        atomically $ writeTChan chan $ PeerManager.Disconnected infoHash sockaddr
+        atomically $ writeTChan chan $
+            PeerManager.Disconnected infoHash sockaddr

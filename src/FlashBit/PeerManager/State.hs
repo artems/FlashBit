@@ -8,30 +8,55 @@ module FlashBit.PeerManager.State
     , mayIAcceptIncomingPeer
     , enqueuePeers
     , nextPackOfPeers
+    , addPendingPeer
+    , removePendingPeer
+    , pendingPeersSize
+    , clearQueue
     ) where
 
+import qualified Data.Set as S
 import qualified Control.Monad.State as S
+import qualified Network.Socket as S
 import Torrent
 
 
 data PeerManagerState = PeerManagerState
-    { _peerQueue  :: [(InfoHash, Peer)]
+    { _peerQueue   :: [(InfoHash, Peer)]
+    , _peerPending :: S.Set S.SockAddr
     }
 
 type PeerManagerMonad a = (S.MonadState PeerManagerState m) => m a
 
 maxPeers :: Integer
-maxPeers = 10
+maxPeers = 5
 
 mkPeerManagerState :: PeerManagerState
 mkPeerManagerState = PeerManagerState
-    { _peerQueue  = []
+    { _peerQueue   = []
+    , _peerPending = S.empty
     }
+
+clearQueue :: InfoHash -> PeerManagerMonad ()
+clearQueue infoHash =
+    S.modify $ \st -> st { _peerQueue = filter' (_peerQueue st) }
+  where
+    filter' queue = filter (\(infoHash', _) -> infoHash /= infoHash') queue
 
 enqueuePeers :: InfoHash -> [Peer] -> PeerManagerMonad ()
 enqueuePeers infoHash peers = do
     let peers' = map (infoHash,) peers
     S.modify $ \st -> st { _peerQueue = _peerQueue st ++ peers' }
+
+addPendingPeer :: S.SockAddr -> PeerManagerMonad ()
+addPendingPeer sockaddr =
+    S.modify $ \st -> st { _peerPending = S.insert sockaddr (_peerPending st) }
+
+removePendingPeer :: S.SockAddr -> PeerManagerMonad ()
+removePendingPeer sockaddr =
+    S.modify $ \st -> st { _peerPending = S.delete sockaddr (_peerPending st) }
+
+pendingPeersSize :: PeerManagerMonad Integer
+pendingPeersSize = (fromIntegral . S.size) `S.liftM` S.gets _peerPending
 
 nextPackOfPeers :: Integer -> PeerManagerMonad [(InfoHash, Peer)]
 nextPackOfPeers count = do

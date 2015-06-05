@@ -21,17 +21,11 @@ import System.Log.Formatter
 import System.Log.Handler (setFormatter)
 import System.Log.Handler.Simple
 
+import FlashBit.API as API
 import ProcessGroup
-import Torrent (mkPeerId, defaultPort)
+import Torrent (mkPeerId)
 import Version (version, protoVersion)
-
-import FlashBit.Listen as Listen
-import FlashBit.Console as Console
-import FlashBit.PeerManager as PeerManager
-import FlashBit.TorrentManager as TorrentManager
-import FlashBit.TorrentManager.Chan as TorrentManager
-import FlashBit.PeerDatabase as PeerDatabase
-import FlashBit.TorrentDatabase as TorrentDatabase
+import Console
 
 
 main :: IO ()
@@ -44,10 +38,7 @@ program :: ([Option], [String]) -> IO ()
 program (opts, files)
     | Help `elem` opts    = putStrLn usageMessage
     | Version `elem` opts = printVersion
-    | null files          = printNoTorrent
     | otherwise           = mainLoop opts files
-  where
-    printNoTorrent = putStrLn "No torrent file"
 
 data Option = Version | Debug | Help
     deriving (Show, Eq)
@@ -86,7 +77,7 @@ printVersion = putStrLn $ programName ++ " version " ++ version ++ "\n"
 
 setupLogging :: [Option] -> IO ()
 setupLogging opts = do
-    logStream <- streamHandler stdout NOTICE >>= \logger -> return $
+    logStream <- streamHandler stdout DEBUG >>= \logger -> return $
         setFormatter logger $
             tfLogFormatter "%F %T" "[$time] $prio $loggername: $msg"
     when (Debug `elem` opts) $ do
@@ -95,42 +86,12 @@ setupLogging opts = do
 
 mainLoop :: [Option] -> [String] -> IO ()
 mainLoop opts files = do
-    debugM "Main" "Initialization"
     setupLogging opts
 
-    stdGen <- newStdGen
-    let peerId = mkPeerId stdGen protoVersion
-    debugM "Main" $ "Generated peer_id: " ++ peerId
-
-    peerManagerChan    <- newTChanIO
-    torrentManagerChan <- newTChanIO
-    peerDatabase       <- atomically mkPeerDatabaseSTM
-    torrentDatabase    <- atomically mkTorrentDatabaseSTM
-
-    forM_ files (addTorrent torrentManagerChan)
-
-    group <- initGroup
-    let actions =
-            [ runListen defaultPort peerManagerChan
-            , runConsole torrentDatabase torrentManagerChan
-            , runPeerManager
-                peerId
-                peerDatabase
-                torrentDatabase -- used for searching info_hash after handshake
-                peerManagerChan
-            , runTorrentManager
-                peerId          -- used by a tracker
-                peerDatabase    -- used by a choke manager
-                torrentDatabase
-                peerManagerChan -- used for sending peers from tracker
-                torrentManagerChan
-            ]
-    runGroup group actions >>= exit
-
-    debugM "Main" "Exit"
-  where
-    addTorrent chan torrentFile = atomically . writeTChan chan $
-        TorrentManager.AddTorrent torrentFile "." True
+    api <- spawn defaultConfig exit
+    forM_ files $ \torrent ->
+        API.addTorrent api torrent False
+    console api
 
 exit :: Either SomeException () -> IO ()
 exit (Left (SomeException e)) = print e

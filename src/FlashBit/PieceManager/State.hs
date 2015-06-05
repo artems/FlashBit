@@ -15,6 +15,7 @@ module FlashBit.PieceManager.State
     , checkTorrentCompletion
     , pieceLength
     , markPeerHave
+    , markPeerUnhave
     , grabBlocks
     ) where
 
@@ -50,6 +51,8 @@ data PieceState
 
 type PieceManagerMonad a = (MonadIO m, S.MonadState PieceManagerState m) => m a
 
+defaultBlockSize :: PieceBlockLength
+defaultBlockSize = 16384 -- bytes
 
 mkPieceManagerState :: PieceArray -> PieceHaveMap -> PieceManagerState
 mkPieceManagerState pieceArray pieceHaveMap =
@@ -113,6 +116,12 @@ markPeerHave pieceNum = do
             Nothing        -> False
             Just PieceDone -> False
             Just _         -> True
+
+
+markPeerUnhave :: [PieceNum] -> PieceManagerMonad ()
+markPeerUnhave pieceNum = do
+    histogram <- S.gets _histogram
+    S.modify $ \s -> s { _histogram = H.unhaveAll pieceNum histogram }
 
 
 putbackBlock :: (PieceNum, PieceBlock) -> PieceManagerMonad ()
@@ -230,7 +239,7 @@ pieceLength pieceNum = do
     return $ fromInteger (_pieceLength piece)
 
 
-grabBlocks :: Integer -> S.Set PieceNum -> PieceManagerMonad (TorrentPieceMode, [(PieceNum, PieceBlock)])
+grabBlocks :: Integer -> S.Set PieceNum -> PieceManagerMonad (PieceMode, [(PieceNum, PieceBlock)])
 grabBlocks num pieceSet = do
     pieces <- S.gets _pieces
     blocks <- tryGrab num pieceSet
