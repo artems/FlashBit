@@ -120,9 +120,10 @@ receive (Right message) = do
     peerTV <- asks _peerTV
 
     case message of
-        PieceManager.BlockComplete _pieceNum _block ->
-            -- TODO: в режиме endgame, нужно отменить запрос такого же блока, если он был.
-            return ()
+        PieceManager.BlockComplete pieceNum block -> do
+            endgame <- liftIO . atomically $ isEndgameSTM peerTV
+            when endgame $
+                tellSender $ SenderMessage (TM.Cancel pieceNum block)
 
         PieceManager.PieceComplete pieceNum -> do
             tellSender $ SenderMessage (TM.Have pieceNum)
@@ -132,7 +133,6 @@ receive (Right message) = do
                 tellSender $ SenderMessage TM.NotInterested
 
         PieceManager.TorrentComplete ->
-            -- TODO: переключить состояние в сидера
             return ()
 
 startup :: Process PConf PState ()

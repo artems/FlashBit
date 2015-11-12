@@ -23,6 +23,7 @@ module FlashBit.PeerDatabase
     , queuePiecesSTM
     , setChokeSTM
     , setUnchokeSTM
+    , isEndgameSTM
     , setEndgameSTM
     , trackInterestedStateSTM
     , trackNotInterestedStateSTM
@@ -149,13 +150,13 @@ removePeerSTM tv infoHash sockAddr =
     alter' Nothing  = Nothing
     alter' (Just m) = Just (M.delete sockAddr m)
 
-clearSTM :: PeerDatabaseTVar -> InfoHash -> STM ()
-clearSTM tv infoHash = modify' tv $ M.alter (const Nothing) infoHash
-
 sizeSTM :: PeerDatabaseTVar -> STM Integer
 sizeSTM tv = M.fold count 0 `fmap` get tv
   where
     count m acc = acc + fromIntegral (M.size m)
+
+clearSTM :: PeerDatabaseTVar -> InfoHash -> STM ()
+clearSTM tv infoHash = modify' tv $ M.alter (const Nothing) infoHash
 
 isSeederSTM :: PeerTVar -> STM Bool
 isSeederSTM tv = (== 0) `fmap` gets _missingPieces tv
@@ -192,6 +193,9 @@ setChokeSTM = modify $ \s -> s { _weChokePeer = True }
 
 setUnchokeSTM :: PeerTVar -> STM ()
 setUnchokeSTM = modify $ \s -> s { _weChokePeer = False }
+
+isEndgameSTM :: PeerTVar -> STM Bool
+isEndgameSTM = gets _isEndgame
 
 setEndgameSTM :: PeerTVar -> STM ()
 setEndgameSTM = modify $ \s -> s { _isEndgame = True }
@@ -312,7 +316,7 @@ updateRateSTM tv currentTime upload download = do
 
     let (_upload, upSpeed,  upRate')  = extractRate currentTime upRate
         (_download, dnSpeed, dnRate') = extractRate currentTime dnRate
-    modify' tv $ \s -> s 
+    modify' tv $ \s -> s
         { _upRate  = upRate'
         , _dnRate  = dnRate'
         , _upSpeed = upSpeed
