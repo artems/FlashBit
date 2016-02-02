@@ -11,16 +11,17 @@ import Torrent
 
 import FlashBit.API as API
 
+
 data Command
-    = Add FilePath
-    | Stop String
-    | Start String
+    = Add FilePath   -- ^ Add new torrent
+    | Stop String    -- ^ Stop downloading
+    | Start String   -- ^ Start downloading
     | Show           -- ^ Show the current state
     | Help           -- ^ Print the help message
     | Quit           -- ^ Quit the program
+    | None           -- ^ Do nothing
     | Unknown String -- ^ Unknown command
     deriving (Eq, Show)
-
 
 console :: API -> IO ()
 console api = runInputT defaultSettings loop
@@ -29,11 +30,12 @@ console api = runInputT defaultSettings loop
         userInput <- getInputLine "% "
         continue  <- case userInput of
             Nothing    -> return True
-            Just input -> liftIO . receive api $ parseCommand input
+            Just input -> liftIO $ receive api (parseCommand input)
         when continue loop
 
 parseCommand :: String -> Command
 parseCommand cmd = case cmd of
+    ""     -> None
     "help" -> Help
     "quit" -> Quit
     "show" -> Show
@@ -55,7 +57,8 @@ receive :: API -> Command -> IO Bool
 receive api command = do
     case command of
         Add filepath -> do
-            API.addTorrent api filepath False
+            let filepath' = normalizeFilepath filepath
+            API.addTorrent api filepath' False
             return True
 
         Stop infoHash -> do
@@ -68,23 +71,29 @@ receive api command = do
             API.startTorrent api infoHash'
             return True
 
-        Quit -> do
-            API.shutdown api
-            return False
-
         Show -> do
             stats <- API.getStatistic api
-            liftIO . putStrLn . intercalate " " $ map showTorrent stats
+            liftIO . putStrLn . intercalate "\n" $ map showTorrent stats
             return True
 
         Help -> do
             liftIO . putStrLn $ helpMessage
             return True
 
+        Quit -> do
+            API.shutdown api
+            return False
+
+        None -> return True
+
         Unknown line -> do
             liftIO . putStrLn $ "Uknown command: " ++ show line
             return True
   where
+    normalizeFilepath :: FilePath -> FilePath
+    normalizeFilepath =
+        reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+
     percentage :: Torrent -> TorrentStatus -> Integer
     percentage torrent stat =
         let left = fromIntegral (_torrentLeft stat)
@@ -94,6 +103,7 @@ receive api command = do
     showTorrent :: (InfoHash, Torrent, TorrentStatus) -> String
     showTorrent (infoHash, torrent, stat) =
         showInfoHash infoHash ++
+        " " ++ (if _torrentIsActive stat then ">>" else "||") ++
         " " ++ show (_torrentName torrent) ++
         " %: " ++  show (percentage torrent stat) ++
         " uploaded: " ++ show (_torrentUploaded stat) ++
